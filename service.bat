@@ -273,7 +273,7 @@ if /I "%~1"=="soft" if not exist "%ROOT%\utils\check_updates.enabled" exit /b 0
 call :require_repository
 if errorlevel 1 exit /b 1
 set "REMOTE_VERSION="
-for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "try {(Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri '%RAW_BASE%/.service/version.txt').Content.Trim()} catch {exit 1}" 2^>nul`) do set "REMOTE_VERSION=%%V"
+for /f "usebackq delims=" %%V in (`curl.exe -fsSL --connect-timeout 4 --max-time 8 "%RAW_BASE%/.service/version.txt" 2^>nul`) do set "REMOTE_VERSION=%%V"
 if not defined REMOTE_VERSION (
   if /I not "%~1"=="soft" call :yellow "Could not check for updates."
   exit /b 1
