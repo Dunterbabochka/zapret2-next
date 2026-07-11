@@ -48,14 +48,15 @@ try {
             }
 
             $content = Get-Content -LiteralPath $output -Raw
+            $lines = @($content -split "`r?`n" | ForEach-Object { $_.Trim() })
             if ($content -match '\{\{') { Add-ValidationError "$name/$mode contains an unresolved token." }
             if ($content -match '--dpi-desync') { Add-ValidationError "$name/$mode contains a Zapret 1 option." }
-            if ($content -notmatch '(?m)^--chdir\s*$') { Add-ValidationError "$name/$mode does not set --chdir." }
-            if ($content -notmatch '(?m)^--lua-init=@\.\./lua/zapret-antidpi\.lua$') { Add-ValidationError "$name/$mode does not load the official antidpi library." }
+            if ($lines -notcontains '--chdir') { Add-ValidationError "$name/$mode does not set --chdir." }
+            if ($lines -notcontains '--lua-init=@../lua/zapret-antidpi.lua') { Add-ValidationError "$name/$mode does not load the official antidpi library." }
             $expectedTcp = if ($mode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
             $expectedUdp = if ($mode -in @('udp', 'all')) { '1024-65535' } else { '12' }
-            if ($content -notmatch "(?m)^--filter-tcp=$([regex]::Escape($expectedTcp))$") { Add-ValidationError "$name/$mode has the wrong game TCP filter." }
-            if ($content -notmatch "(?m)^--filter-udp=$([regex]::Escape($expectedUdp))$") { Add-ValidationError "$name/$mode has the wrong game UDP filter." }
+            if ($lines -notcontains "--filter-tcp=$expectedTcp") { Add-ValidationError "$name/$mode has the wrong game TCP filter." }
+            if ($lines -notcontains "--filter-udp=$expectedUdp") { Add-ValidationError "$name/$mode has the wrong game UDP filter." }
             Test-ReferencedFiles -ConfigPath $output -PresetName "$name/$mode"
         }
     }
