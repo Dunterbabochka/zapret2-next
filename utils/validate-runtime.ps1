@@ -6,6 +6,11 @@ $renderer = Join-Path $PSScriptRoot 'render-config.ps1'
 $winws = Join-Path $root 'bin\winws2.exe'
 $presets = Get-ChildItem (Join-Path $root 'presets') -Filter '*.txt.in' |
     Where-Object { $_.BaseName -notlike '_*' } | Sort-Object Name
+$principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host '[ERROR] Run this runtime validation from an elevated PowerShell window.' -ForegroundColor Red
+    exit 1
+}
 $failures = @()
 
 foreach ($file in $presets) {
