@@ -1,0 +1,17 @@
+[TCP_HTTP]
+--payload=empty
+--lua-desync=syndata:blob=http_iana:repeats=2
+--payload=http_req
+--lua-desync=multidisorder:pos=2,host+1:seqovl=1:seqovl_pattern=zero
+[TCP_TLS]
+--payload=empty
+--lua-desync=syndata:blob=tls_google:repeats=2
+--payload=tls_client_hello
+--lua-desync=multidisorder:pos=2,midsld:seqovl=1:seqovl_pattern=zero
+[TCP_GENERIC]
+--payload=empty
+--lua-desync=syndata:blob=tls_google:repeats=2
+--payload=all
+--lua-desync=multidisorder:pos=2:seqovl=1:seqovl_pattern=zero
+[QUIC]
+--lua-desync=fake:blob=quic_google:repeats=6

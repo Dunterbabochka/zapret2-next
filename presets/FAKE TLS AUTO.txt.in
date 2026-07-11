@@ -1,0 +1,11 @@
+[TCP_HTTP]
+--lua-desync=fake:blob=http_iana:ip_autottl=-2,3-20:ip6_autottl=-2,3-20:tcp_md5:repeats=6
+--lua-desync=multidisorder:pos=2,host+1
+[TCP_TLS]
+--lua-desync=fake:blob=tls_google:ip_autottl=-2,3-20:ip6_autottl=-2,3-20:tcp_md5:repeats=6:tls_mod=rnd,rndsni
+--lua-desync=multidisorder:pos=2,midsld
+[TCP_GENERIC]
+--lua-desync=fake:blob=tls_google:ip_autottl=-2,3-20:ip6_autottl=-2,3-20:repeats=4
+--lua-desync=multidisorder:pos=2
+[QUIC]
+--lua-desync=fake:blob=quic_google:ip_autottl=-2,3-20:ip6_autottl=-2,3-20:repeats=8

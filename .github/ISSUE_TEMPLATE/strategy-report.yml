@@ -1,0 +1,41 @@
+name: Strategy compatibility report
+description: Report whether a strategy works on a specific network
+title: "[Strategy]: "
+labels: [strategy-report]
+body:
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2 x64
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and region
+      description: Do not include an IP address, exact home address, account number, or other personal data.
+    validations:
+      required: true
+  - type: dropdown
+    id: strategy
+    attributes:
+      label: Strategy
+      options: [general, ALT, ALT3, ALT5, ALT11, FAKE TLS AUTO, FAKE TLS AUTO ALT2, SIMPLE FAKE]
+    validations:
+      required: true
+  - type: checkboxes
+    id: results
+    attributes:
+      label: Results
+      options:
+        - label: YouTube website opens
+        - label: YouTube video starts
+        - label: Discord website opens
+        - label: Discord voice works in both directions
+        - label: Discord screen sharing works
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste only relevant service/test output. Do not attach packet captures containing private traffic.

@@ -1,0 +1,23 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate templates and release policy
+        shell: pwsh
+        run: ./utils/validate.ps1
+      - name: Verify pinned runtime hashes
+        shell: pwsh
+        run: |
+          $expected = @{}
+          Get-Content ENGINE_VERSION | Where-Object { $_ -match '^(.+) sha256=([A-F0-9]{64})$' } | ForEach-Object { $expected[$matches[1]] = $matches[2] }
+          foreach ($name in $expected.Keys) {
+            $actual = (Get-FileHash (Join-Path bin $name) -Algorithm SHA256).Hash
+            if ($actual -ne $expected[$name]) { throw "Hash mismatch: $name" }
+          }

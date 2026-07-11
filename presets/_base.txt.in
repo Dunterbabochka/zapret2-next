@@ -1,0 +1,26 @@
+# Zapret 2 NEXT generated configuration
+# Preset: {{PRESET}}
+# Game filter: {{GAME_MODE}}
+
+--chdir
+--debug=0
+--ctrack-disable=0
+--ipcache-lifetime=8400
+--ipcache-hostname=1
+
+--lua-init=@../lua/zapret-lib.lua
+--lua-init=@../lua/zapret-antidpi.lua
+--lua-init=@../lua/zapret-auto.lua
+
+--wf-tcp-out=80,443,2053,2083,2087,2096,8443,{{GAME_TCP}}
+--wf-udp-out=443,19294-19344,50000-50100,{{GAME_UDP}}
+--wf-raw-part=@../windivert.filter/windivert_part.discord_media.txt
+--wf-raw-part=@../windivert.filter/windivert_part.stun.txt
+--wf-raw-part=@../windivert.filter/windivert_part.wireguard.txt
+--wf-raw-part=@../windivert.filter/windivert_part.quic_initial_ietf.txt
+
+--blob=tls_google:@fake/tls_clienthello_www_google_com.bin
+--blob=quic_google:@fake/quic_initial_www_google_com.bin
+--blob=stun:@fake/stun.bin
+--blob=http_iana:@fake/http_iana_org.bin
+--blob=zero:@fake/zero_512.bin

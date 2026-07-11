@@ -1,0 +1,11 @@
+[TCP_HTTP]
+--lua-desync=fake:blob=http_iana:tcp_md5:repeats=6
+--lua-desync=multisplit:pos=2,host+1:seqovl=1:seqovl_pattern=zero
+[TCP_TLS]
+--lua-desync=fake:blob=tls_google:tcp_md5:repeats=6
+--lua-desync=multisplit:pos=2,midsld:seqovl=1:seqovl_pattern=zero
+[TCP_GENERIC]
+--lua-desync=fake:blob=tls_google:tcp_md5:repeats=4
+--lua-desync=multisplit:pos=2:seqovl=1:seqovl_pattern=zero
+[QUIC]
+--lua-desync=fake:blob=quic_google:repeats=6
