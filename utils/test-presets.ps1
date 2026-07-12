@@ -50,10 +50,20 @@ function Invoke-WebChecks([array]$Targets) {
             @{ Name='TLS1.3'; Args=@('--tlsv1.3','--tls-max','1.3') }
         )
         foreach ($test in $tests) {
-            $output = & curl.exe -I -sS --max-time $TimeoutSeconds -o NUL -w '%{http_code}' @($test.Args) $target 2>&1
+            $previousErrorAction = $ErrorActionPreference
+            try {
+                # Windows PowerShell turns native stderr into an ErrorRecord.
+                # A network timeout is a test result, not a tester failure.
+                $ErrorActionPreference = 'Continue'
+                $output = & curl.exe -I -sS --max-time $TimeoutSeconds -o NUL -w '%{http_code}' @($test.Args) $target 2>$null
+                $curlExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $previousErrorAction
+            }
             $code = ($output | Out-String).Trim()
-            $ok = $LASTEXITCODE -eq 0 -and $code -match '^\d{3}$' -and $code -ne '000'
-            $rows += [pscustomobject]@{ Target=$target; Test=$test.Name; Success=$ok; Detail=$code }
+            $ok = $curlExitCode -eq 0 -and $code -match '^\d{3}$' -and $code -ne '000'
+            $detail = if ($ok) { $code } else { "curl $curlExitCode / HTTP $(if ($code) { $code } else { 'none' })" }
+            $rows += [pscustomobject]@{ Target=$target; Test=$test.Name; Success=$ok; Detail=$detail }
         }
     }
     return $rows
