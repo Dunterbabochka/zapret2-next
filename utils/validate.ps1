@@ -25,6 +25,33 @@ function Test-ReferencedFiles([string]$ConfigPath, [string]$PresetName) {
     }
 }
 
+foreach ($scriptPath in Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File) {
+    $tokens = $null
+    $parseErrors = $null
+    [Management.Automation.Language.Parser]::ParseFile(
+        $scriptPath.FullName,
+        [ref]$tokens,
+        [ref]$parseErrors
+    ) | Out-Null
+    foreach ($parseError in $parseErrors) {
+        Add-ValidationError "$($scriptPath.Name) has a syntax error: $($parseError.Message)"
+    }
+}
+
+$runnerContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'run-preset.bat') -Raw
+if ($runnerContent -notmatch 'invoke-winws\.ps1') {
+    Add-ValidationError 'run-preset.bat must use the logging winws2 launcher.'
+}
+
+$serviceContent = Get-Content -LiteralPath (Join-Path $root 'service.bat') -Raw
+if ($serviceContent -notmatch '(?m)^echo {6}10\. Run Diagnostics\r?$' -or
+    $serviceContent -notmatch '(?m)^echo {6}11\. Run Tests\r?$') {
+    Add-ValidationError 'The two-digit service menu items are not aligned.'
+}
+if ($serviceContent -notmatch '(?m)^start "Zapret 2 NEXT tests" powershell -NoExit ') {
+    Add-ValidationError 'The test console must stay open so failures remain visible.'
+}
+
 $presets = Get-ChildItem -LiteralPath $presetDir -Filter '*.txt.in' |
     Where-Object { $_.BaseName -notlike '_*' } |
     Sort-Object Name

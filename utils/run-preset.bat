@@ -27,24 +27,53 @@ if not errorlevel 1 (
   exit /b 4
 )
 
+tasklist /FI "IMAGENAME eq winws.exe" 2>nul | findstr /I "winws.exe" >nul
+if not errorlevel 1 (
+  echo [ERROR] Legacy winws.exe is running and may conflict with WinDivert.
+  echo Stop the old Zapret bundle before starting Zapret 2 NEXT.
+  pause
+  exit /b 4
+)
+sc query zapret 2>nul | findstr /I "RUNNING START_PENDING" >nul
+if not errorlevel 1 (
+  echo [ERROR] A legacy Zapret service is running and may conflict with WinDivert.
+  echo Stop or remove that service before starting Zapret 2 NEXT.
+  pause
+  exit /b 4
+)
+
 call "%ROOT%\service.bat" check_updates soft >nul 2>&1
 set "SAFE_PRESET=%PRESET: =_%"
 set "CONFIG=%ROOT%\runtime\manual-%SAFE_PRESET%.txt"
+set "DRY_CONFIG=%ROOT%\runtime\validate-%SAFE_PRESET%.txt"
+set "LOG_PREFIX=%ROOT%\runtime\manual-%SAFE_PRESET%"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "%PRESET%" -Output "%CONFIG%"
 if errorlevel 1 (
   echo [ERROR] Failed to render preset.
   pause
   exit /b 5
 )
-
-taskkill /F /IM winws2.exe >nul 2>&1
-start "Zapret 2 NEXT: %PRESET%" /min "%ROOT%\bin\winws2.exe" @"%CONFIG%"
-timeout /t 2 /nobreak >nul
-tasklist /FI "IMAGENAME eq winws2.exe" 2>nul | findstr /I "winws2.exe" >nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "%PRESET%" -Output "%DRY_CONFIG%" -DryRun >nul
 if errorlevel 1 (
-  echo [ERROR] winws2 did not stay running. Validate the preset from service.bat.
+  echo [ERROR] Failed to render validation config.
+  pause
+  exit /b 5
+)
+
+echo Validating "%PRESET%"...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\invoke-winws.ps1" -Config "%DRY_CONFIG%" -LogPrefix "%LOG_PREFIX%-validate" -Validate
+if errorlevel 1 (
+  echo [ERROR] Preset validation failed. The engine output is shown above.
   pause
   exit /b 6
+)
+
+taskkill /F /IM winws2.exe >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\invoke-winws.ps1" -Config "%CONFIG%" -LogPrefix "%LOG_PREFIX%"
+if errorlevel 1 (
+  echo [ERROR] winws2 failed to start. The engine output and log paths are shown above.
+  pause
+  exit /b 7
 )
 echo [OK] Zapret 2 NEXT started with preset "%PRESET%".
 exit /b 0

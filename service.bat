@@ -46,8 +46,8 @@ echo      8. Update Hosts File
 echo      9. Check for Updates
 echo.
 echo   :: TOOLS
-echo     10. Run Diagnostics
-echo     11. Run Tests
+echo      10. Run Diagnostics
+echo      11. Run Tests
 echo.
 echo   -----------------------------------------------
 echo      0. Exit
@@ -306,7 +306,7 @@ pause
 goto menu
 
 :tests
-start "Zapret 2 NEXT tests" powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\test-presets.ps1"
+start "Zapret 2 NEXT tests" powershell -NoExit -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\test-presets.ps1"
 goto menu
 
 :refresh_service_config

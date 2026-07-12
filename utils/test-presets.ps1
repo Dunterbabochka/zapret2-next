@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $renderer = Join-Path $PSScriptRoot 'render-config.ps1'
+$starter = Join-Path $PSScriptRoot 'invoke-winws.ps1'
 $winws = Join-Path $root 'bin\winws2.exe'
 $resultsDir = Join-Path $root 'runtime\test-results'
 New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
@@ -96,14 +97,22 @@ try {
     Stop-Winws2
     foreach ($file in $presetFiles) {
         $name = $file.BaseName -replace '\.txt$', ''
-        $config = Join-Path $root ("runtime\test-{0}.txt" -f ($name -replace ' ', '_'))
+        $safeName = $name -replace ' ', '_'
+        $config = Join-Path $root ("runtime\test-{0}.txt" -f $safeName)
+        $dryConfig = Join-Path $root ("runtime\test-{0}-validate.txt" -f $safeName)
+        $logPrefix = Join-Path $resultsDir ("{0}-{1}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $safeName)
         & $renderer -Preset $name -Output $config | Out-Null
-        Write-Host "`n[$name] starting winws2..." -ForegroundColor Cyan
-        $argument = '@"' + $config + '"'
-        $proc = Start-Process -FilePath $winws -ArgumentList $argument -WorkingDirectory (Split-Path $winws) -WindowStyle Hidden -PassThru
-        Start-Sleep -Seconds 3
-        if ($proc.HasExited) {
-            $all += [pscustomobject]@{ Preset=$name; Target='(process)'; Test='START'; Success=$false; Detail="exit $($proc.ExitCode)" }
+        & $renderer -Preset $name -Output $dryConfig -DryRun | Out-Null
+        Write-Host "`n[$name] validating config..." -ForegroundColor Cyan
+        & $starter -Config $dryConfig -LogPrefix ($logPrefix + '-validate') -Validate
+        if ($LASTEXITCODE -ne 0) {
+            $all += [pscustomobject]@{ Preset=$name; Target='(process)'; Test='VALIDATE'; Success=$false; Detail="winws2 rejected config; see $logPrefix-validate.*.log" }
+            continue
+        }
+        Write-Host "[$name] starting winws2..." -ForegroundColor Cyan
+        & $starter -Config $config -LogPrefix $logPrefix -StartupWaitSeconds 3
+        if ($LASTEXITCODE -ne 0) {
+            $all += [pscustomobject]@{ Preset=$name; Target='(process)'; Test='START'; Success=$false; Detail="startup failed; see $logPrefix.*.log" }
             continue
         }
         $rows = Invoke-WebChecks -Targets $targets
