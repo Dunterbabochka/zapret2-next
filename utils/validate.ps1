@@ -112,6 +112,20 @@ try {
             Test-ReferencedFiles -ConfigPath $output -PresetName "$name/$mode"
         }
     }
+
+    $dryOutput = Join-Path $runtimeDir 'general-dry-run.txt'
+    try {
+        & $renderer -Preset 'general' -Output $dryOutput -DryRun | Out-Null
+        $dryLines = @(Get-Content -LiteralPath $dryOutput | ForEach-Object { $_.Trim() })
+        if ($dryLines -notcontains '--dry-run') {
+            Add-ValidationError 'Dry-run config does not enable --dry-run.'
+        }
+        if ($dryLines -notcontains '--wf-dup-check=0') {
+            Add-ValidationError 'Dry-run config does not disable duplicate-filter checks.'
+        }
+    } catch {
+        Add-ValidationError "Dry-run render failed: $($_.Exception.Message)"
+    }
 } finally {
     if ($null -eq $originalMode) {
         Remove-Item -LiteralPath $originalModePath -Force -ErrorAction SilentlyContinue

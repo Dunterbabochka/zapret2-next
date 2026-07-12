@@ -86,6 +86,7 @@ if ($InterceptOff) {
     $content += "`r`n--intercept=0`r`n"
 }
 if ($DryRun) {
+    $content += "`r`n--wf-dup-check=0`r`n"
     $content += "`r`n--dry-run`r`n"
 }
 

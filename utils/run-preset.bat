@@ -76,4 +76,6 @@ if errorlevel 1 (
   exit /b 7
 )
 echo [OK] Zapret 2 NEXT started with preset "%PRESET%".
+echo The winws2 process will keep running after this window closes.
+timeout /t 4 /nobreak >nul
 exit /b 0
