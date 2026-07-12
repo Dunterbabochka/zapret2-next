@@ -93,5 +93,5 @@
 --ipset-exclude=../lists/ipset-exclude.txt
 --ipset-exclude=../lists/ipset-exclude-user.txt
 --payload=all
---out-range=-d4
---lua-desync=fake:blob=zero:repeats=6
+--out-range=-n4
+--lua-desync=fake:blob=discord_voice:repeats=10:payload=all
