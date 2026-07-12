@@ -96,14 +96,21 @@ function Invoke-WebChecks {
         $pingStatus = 'n/a'
         $pingSuccess = $null
         if ($Target.PingTarget) {
+            $pingClient = [Net.NetworkInformation.Ping]::new()
             try {
-                $ping = @(Test-Connection -ComputerName $Target.PingTarget -Count 1 -ErrorAction Stop)
-                $average = ($ping | Measure-Object -Property ResponseTime -Average).Average
-                $pingStatus = '{0:N0}ms' -f $average
-                $pingSuccess = $true
+                $reply = $pingClient.Send($Target.PingTarget, [Math]::Max(1000, $TimeoutSeconds * 1000))
+                if ($reply.Status -eq [Net.NetworkInformation.IPStatus]::Success) {
+                    $pingStatus = if ($reply.RoundtripTime -eq 0) { '<1ms' } else { "$($reply.RoundtripTime)ms" }
+                    $pingSuccess = $true
+                } else {
+                    $pingStatus = $reply.Status.ToString()
+                    $pingSuccess = $false
+                }
             } catch {
                 $pingStatus = 'Timeout'
                 $pingSuccess = $false
+            } finally {
+                $pingClient.Dispose()
             }
         }
 

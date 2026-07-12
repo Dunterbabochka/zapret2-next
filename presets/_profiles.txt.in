@@ -11,6 +11,15 @@
 {{QUIC}}
 --new
 
+# Dedicated Discord web TLS profile
+--filter-tcp=443
+--hostlist-domains=discord.com,discord.gg,discordapp.com,discordapp.net
+--payload=tls_client_hello
+--out-range=-d10
+--lua-desync=fake:blob=tls_google:repeats=8:tcp_ts=-600000
+--lua-desync=multisplit:pos=2:seqovl=681:seqovl_pattern=tls_google:repeats=8:tcp_ts=-600000
+--new
+
 # Discord voice discovery and STUN
 --filter-l7=stun,discord
 --payload=stun,discord_ip_discovery
