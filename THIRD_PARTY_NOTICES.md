@@ -10,6 +10,8 @@ Source: https://github.com/bol-van/zapret2
 
 The `winws2.exe` binary, official Lua libraries, filter examples and fake payload files in this distribution originate from Zapret 2 v1.0.2.
 
+The additional `quic_initial_dbankcloud_ru.bin` payload is retained from the MIT-licensed Windows bundle identified below for ALT12 compatibility.
+
 ## Reused Windows bundle code
 
 Copyright (c) 2016-2026 bol-van  

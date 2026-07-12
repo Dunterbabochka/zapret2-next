@@ -61,6 +61,18 @@ foreach ($name in $required) {
     $value = ($sections[$name] -join "`r`n").Trim()
     $content = $content.Replace("{{$name}}", $value)
 }
+$discordUdp = if ($sections.ContainsKey('DISCORD_UDP') -and $sections['DISCORD_UDP'].Count -gt 0) {
+    ($sections['DISCORD_UDP'] -join "`r`n").Trim()
+} else {
+    @(
+        '--filter-udp=19294-19344,50000-50100'
+        '--filter-l7=stun,discord'
+        '--payload=stun,discord_ip_discovery'
+        '--out-range=-d5'
+        '--lua-desync=fake:blob=zero:repeats=6'
+    ) -join "`r`n"
+}
+$content = $content.Replace('{{DISCORD_UDP}}', $discordUdp)
 $content = $content.Replace('{{PRESET}}', $Preset)
 $content = $content.Replace('{{GAME_MODE}}', $gameMode)
 $content = $content.Replace('{{GAME_TCP}}', $gameTcp)

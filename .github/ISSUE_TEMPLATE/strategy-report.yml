@@ -21,7 +21,7 @@ body:
     id: strategy
     attributes:
       label: Strategy
-      options: [general, ALT, ALT3, ALT5, ALT11, FAKE TLS AUTO, FAKE TLS AUTO ALT2, SIMPLE FAKE]
+      options: [general, ALT, ALT3, ALT5, ALT11, ALT12, FAKE TLS AUTO, FAKE TLS AUTO ALT2, SIMPLE FAKE]
     validations:
       required: true
   - type: checkboxes

@@ -12,10 +12,7 @@
 --new
 
 # Discord voice discovery and STUN
---filter-l7=stun,discord
---payload=stun,discord_ip_discovery
---out-range=-d5
---lua-desync=fake:blob=zero:repeats=6
+{{DISCORD_UDP}}
 --new
 
 # Discord media TLS

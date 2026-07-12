@@ -227,16 +227,15 @@ goto menu
 
 :update_ipset
 cls
-call :require_repository
-if errorlevel 1 goto menu_pause
-set "IPSET_URL=%RAW_BASE%/.service/ipset-service.txt"
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ErrorActionPreference='Stop'; $dst='%ROOT%\lists\ipset-all.txt'; $tmp=$dst+'.download'; $bak=$dst+'.backup';" ^
-  "Invoke-WebRequest -UseBasicParsing -TimeoutSec 20 -Uri '%IPSET_URL%' -OutFile $tmp;" ^
-  "$valid=Get-Content $tmp ^| Where-Object { $_ -and $_ -notmatch '^\s*#' };" ^
-  "if($valid.Count -lt 10 -or ($valid ^| Where-Object { $_ -notmatch '^\s*([0-9a-fA-F:.]+)(/\d+)?\s*$' })){throw 'Downloaded IPSet has an invalid format'};" ^
-  "if(Test-Path $dst){Copy-Item $dst $bak -Force}; Move-Item $tmp $dst -Force"
-if errorlevel 1 (call :red "IPSet update failed; current list was preserved.") else (call :green "IPSet updated atomically.")
+set "IPSET_URL="
+call :repository_ready
+if not errorlevel 1 set "IPSET_URL=%RAW_BASE%/.service/ipset-service.txt"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-ipset.ps1" -RemoteUrl "!IPSET_URL!" -Destination "%ROOT%\lists\ipset-all.txt"
+if errorlevel 1 (
+  call :red "IPSet update failed; see the error above."
+) else (
+  call :refresh_service_config
+)
 :menu_pause
 pause
 goto menu
@@ -244,19 +243,17 @@ goto menu
 :update_hosts
 cls
 set "HOSTS_TEMP=%TEMP%\zapret2-next-hosts.txt"
-set "HOSTS_SOURCE=%ROOT%\.service\hosts"
+set "HOSTS_URL="
 call :repository_ready
-if not errorlevel 1 (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 -Uri '%RAW_BASE%/.service/hosts' -OutFile '%HOSTS_TEMP%' } catch { exit 1 }"
-)
-if not exist "!HOSTS_TEMP!" copy /y "!HOSTS_SOURCE!" "!HOSTS_TEMP!" >nul
-if not exist "!HOSTS_TEMP!" (
-  call :red "No hosts suggestion file is available."
+if not errorlevel 1 set "HOSTS_URL=%RAW_BASE%/.service/hosts"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\prepare-hosts.ps1" -Output "!HOSTS_TEMP!" -RemoteUrl "!HOSTS_URL!"
+if errorlevel 1 (
+  call :red "Could not prepare hosts suggestions."
   pause
   goto menu
 )
 echo The system hosts file is never modified automatically.
-echo Review the suggestions and copy only the entries you need.
+echo Review the generated DNS snapshot and copy only the entries you need.
 start "" notepad "!HOSTS_TEMP!"
 explorer /select,"%SystemRoot%\System32\drivers\etc\hosts"
 pause

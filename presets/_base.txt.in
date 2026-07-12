@@ -22,5 +22,6 @@
 --blob=tls_google:@fake/tls_clienthello_www_google_com.bin
 --blob=quic_google:@fake/quic_initial_www_google_com.bin
 --blob=stun:@fake/stun.bin
+--blob=discord_voice:@fake/quic_initial_dbankcloud_ru.bin
 --blob=http_iana:@fake/http_iana_org.bin
 --blob=zero:@fake/zero_512.bin
