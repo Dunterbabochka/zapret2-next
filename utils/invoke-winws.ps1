@@ -66,14 +66,21 @@ try {
 if ($Validate) {
     $process.WaitForExit()
     $process.Refresh()
-    $engineExitCode = $process.ExitCode
-    if ($engineExitCode -ne 0) {
+    $engineExitCode = try { $process.ExitCode } catch { $null }
+    $verified = (Test-Path -LiteralPath $stdoutLog -PathType Leaf) -and
+        ([bool](Select-String -LiteralPath $stdoutLog -Pattern '^command line parameters verified$' -Quiet))
+
+    # Windows PowerShell can lose ExitCode for a short-lived Start-Process
+    # child with redirected streams. The dry-run success marker is emitted by
+    # winws2 only after its complete argument and file validation succeeds.
+    if ($engineExitCode -eq 0 -or ($null -eq $engineExitCode -and $verified)) {
+        exit 0
+    } else {
         $displayExitCode = if ($null -eq $engineExitCode) { 'unknown' } else { $engineExitCode }
         Write-Host "[ERROR] winws2 rejected the generated config (exit $displayExitCode)." -ForegroundColor Red
         Show-EngineLog
         exit 13
     }
-    exit 0
 }
 
 Start-Sleep -Seconds $StartupWaitSeconds
