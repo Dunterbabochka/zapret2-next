@@ -2,7 +2,7 @@
 # Preset: {{PRESET}}
 # Game filter: {{GAME_MODE}}
 
---chdir
+--chdir="{{BIN_DIR}}"
 --debug=0
 --ctrack-disable=0
 --ipcache-lifetime=8400

@@ -65,8 +65,11 @@ try {
 
 if ($Validate) {
     $process.WaitForExit()
-    if ($process.ExitCode -ne 0) {
-        Write-Host "[ERROR] winws2 rejected the generated config (exit $($process.ExitCode))." -ForegroundColor Red
+    $process.Refresh()
+    $engineExitCode = $process.ExitCode
+    if ($engineExitCode -ne 0) {
+        $displayExitCode = if ($null -eq $engineExitCode) { 'unknown' } else { $engineExitCode }
+        Write-Host "[ERROR] winws2 rejected the generated config (exit $displayExitCode)." -ForegroundColor Red
         Show-EngineLog
         exit 13
     }
@@ -76,7 +79,10 @@ if ($Validate) {
 Start-Sleep -Seconds $StartupWaitSeconds
 $process.Refresh()
 if ($process.HasExited) {
-    Write-Host "[ERROR] winws2 stopped during startup (exit $($process.ExitCode))." -ForegroundColor Red
+    $process.WaitForExit()
+    $process.Refresh()
+    $displayExitCode = if ($null -eq $process.ExitCode) { 'unknown' } else { $process.ExitCode }
+    Write-Host "[ERROR] winws2 stopped during startup (exit $displayExitCode)." -ForegroundColor Red
     Show-EngineLog
     exit 14
 }

@@ -65,6 +65,8 @@ $content = $content.Replace('{{PRESET}}', $Preset)
 $content = $content.Replace('{{GAME_MODE}}', $gameMode)
 $content = $content.Replace('{{GAME_TCP}}', $gameTcp)
 $content = $content.Replace('{{GAME_UDP}}', $gameUdp)
+$binDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
+$content = $content.Replace('{{BIN_DIR}}', $binDir)
 
 if ($content -match '\{\{[A-Z_]+\}\}') {
     throw "Unresolved template token: $($matches[0])"

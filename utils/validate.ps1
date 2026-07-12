@@ -78,7 +78,10 @@ try {
             $lines = @($content -split "`r?`n" | ForEach-Object { $_.Trim() })
             if ($content -match '\{\{') { Add-ValidationError "$name/$mode contains an unresolved token." }
             if ($content -match '--dpi-desync') { Add-ValidationError "$name/$mode contains a Zapret 1 option." }
-            if ($lines -notcontains '--chdir') { Add-ValidationError "$name/$mode does not set --chdir." }
+            $expectedBinDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
+            if ($lines -notcontains ('--chdir="' + $expectedBinDir + '"')) {
+                Add-ValidationError "$name/$mode does not set an explicit quoted bin directory."
+            }
             if ($lines -notcontains '--lua-init=@../lua/zapret-antidpi.lua') { Add-ValidationError "$name/$mode does not load the official antidpi library." }
             $expectedTcp = if ($mode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
             $expectedUdp = if ($mode -in @('udp', 'all')) { '1024-65535' } else { '12' }
