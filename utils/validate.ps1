@@ -16,11 +16,27 @@ function Add-ValidationError([string]$Message) {
 function Test-ReferencedFiles([string]$ConfigPath, [string]$PresetName) {
     $binDir = Join-Path $root 'bin'
     $content = Get-Content -LiteralPath $ConfigPath -Raw
-    foreach ($match in [regex]::Matches($content, '@([^\s\r\n]+)')) {
-        $relative = $match.Groups[1].Value.Trim('"')
-        $path = [IO.Path]::GetFullPath((Join-Path $binDir ($relative -replace '/', '\')))
+    $references = [Collections.Generic.List[string]]::new()
+    foreach ($match in [regex]::Matches($content, '@(?:"([^"]+)"|([^\s\r\n]+))')) {
+        $value = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
+        $references.Add($value)
+    }
+    foreach ($match in [regex]::Matches(
+        $content,
+        '(?m)^--(?:hostlist|hostlist-exclude|ipset|ipset-exclude)=(?:"([^"]+)"|([^\r\n]+))$'
+    )) {
+        $value = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
+        $references.Add($value)
+    }
+    foreach ($reference in $references) {
+        $native = $reference -replace '/', '\'
+        $path = if ([IO.Path]::IsPathRooted($native)) {
+            [IO.Path]::GetFullPath($native)
+        } else {
+            [IO.Path]::GetFullPath((Join-Path $binDir $native))
+        }
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            Add-ValidationError "$PresetName references a missing file: $relative"
+            Add-ValidationError "$PresetName references a missing file: $reference"
         }
     }
 }
@@ -78,11 +94,17 @@ try {
             $lines = @($content -split "`r?`n" | ForEach-Object { $_.Trim() })
             if ($content -match '\{\{') { Add-ValidationError "$name/$mode contains an unresolved token." }
             if ($content -match '--dpi-desync') { Add-ValidationError "$name/$mode contains a Zapret 1 option." }
+            if ($content -match '(?:@|=)\.\./|@fake/') {
+                Add-ValidationError "$name/$mode contains a cwd-dependent resource path."
+            }
+            $expectedRootDir = $root.Replace('\', '/')
             $expectedBinDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
             if ($lines -notcontains ('--chdir="' + $expectedBinDir + '"')) {
                 Add-ValidationError "$name/$mode does not set an explicit quoted bin directory."
             }
-            if ($lines -notcontains '--lua-init=@../lua/zapret-antidpi.lua') { Add-ValidationError "$name/$mode does not load the official antidpi library." }
+            if ($lines -notcontains ('--lua-init=@"' + $expectedRootDir + '/lua/zapret-antidpi.lua"')) {
+                Add-ValidationError "$name/$mode does not load the official antidpi library."
+            }
             $expectedTcp = if ($mode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
             $expectedUdp = if ($mode -in @('udp', 'all')) { '1024-65535' } else { '12' }
             if ($lines -notcontains "--filter-tcp=$expectedTcp") { Add-ValidationError "$name/$mode has the wrong game TCP filter." }

@@ -65,7 +65,15 @@ $content = $content.Replace('{{PRESET}}', $Preset)
 $content = $content.Replace('{{GAME_MODE}}', $gameMode)
 $content = $content.Replace('{{GAME_TCP}}', $gameTcp)
 $content = $content.Replace('{{GAME_UDP}}', $gameUdp)
+$rootDir = $root.Replace('\', '/')
 $binDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
+
+# winws2 v1.0.2 does not reliably apply --chdir before every file-valued
+# Windows option. Emit quoted absolute paths while keeping templates readable.
+$content = [regex]::Replace($content, '(?m)=@\.\./(lua|windivert\.filter)/([^\r\n]+)(?=\r?$)', '=@"{{ROOT_DIR}}/$1/$2"')
+$content = [regex]::Replace($content, '(?m):@fake/([^\r\n]+)(?=\r?$)', ':@"{{BIN_DIR}}/fake/$1"')
+$content = [regex]::Replace($content, '(?m)=\.\./lists/([^\r\n]+)(?=\r?$)', '="{{ROOT_DIR}}/lists/$1"')
+$content = $content.Replace('{{ROOT_DIR}}', $rootDir)
 $content = $content.Replace('{{BIN_DIR}}', $binDir)
 
 if ($content -match '\{\{[A-Z_]+\}\}') {
