@@ -100,7 +100,7 @@ function Invoke-WebChecks {
             try {
                 $reply = $pingClient.Send($Target.PingTarget, [Math]::Max(1000, $TimeoutSeconds * 1000))
                 if ($reply.Status -eq [Net.NetworkInformation.IPStatus]::Success) {
-                    $pingStatus = if ($reply.RoundtripTime -eq 0) { '<1ms' } else { "$($reply.RoundtripTime)ms" }
+                    $pingStatus = "$($reply.RoundtripTime)ms"
                     $pingSuccess = $true
                 } else {
                     $pingStatus = $reply.Status.ToString()
