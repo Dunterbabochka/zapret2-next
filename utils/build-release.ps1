@@ -16,7 +16,8 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 $topFiles = @(
     'README.md','LICENSE.txt','THIRD_PARTY_NOTICES.md','ENGINE_VERSION','SHA256SUMS.txt',
     'service.bat','general.bat','general (ALT).bat','general (ALT3).bat','general (ALT5).bat',
-    'general (ALT11).bat','general (FAKE TLS AUTO ALT2).bat','diagnose discord voice.bat'
+    'general (ALT11).bat','general (FAKE TLS AUTO ALT2).bat','diagnose discord voice.bat',
+    'compatibility wizard.bat'
 )
 $dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }

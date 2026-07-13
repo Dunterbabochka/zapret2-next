@@ -1,0 +1,50 @@
+[
+  {
+    "name": "DiscordMain",
+    "product": "Discord",
+    "mandatory": true,
+    "url": "https://discord.com/"
+  },
+  {
+    "name": "DiscordGateway",
+    "product": "Discord",
+    "mandatory": true,
+    "url": "https://gateway.discord.gg/"
+  },
+  {
+    "name": "DiscordCDN",
+    "product": "Discord",
+    "mandatory": false,
+    "url": "https://cdn.discordapp.com/"
+  },
+  {
+    "name": "DiscordUpdates",
+    "product": "Discord",
+    "mandatory": false,
+    "url": "https://updates.discord.com/"
+  },
+  {
+    "name": "YouTubeWeb",
+    "product": "YouTube",
+    "mandatory": true,
+    "url": "https://www.youtube.com/"
+  },
+  {
+    "name": "YouTubeVideoRedirect",
+    "product": "YouTube",
+    "mandatory": true,
+    "url": "https://redirector.googlevideo.com/"
+  },
+  {
+    "name": "YouTubeImage",
+    "product": "YouTube",
+    "mandatory": false,
+    "url": "https://i.ytimg.com/"
+  },
+  {
+    "name": "GoogleStatic",
+    "product": "Other",
+    "mandatory": false,
+    "url": "https://www.gstatic.com/"
+  }
+]
