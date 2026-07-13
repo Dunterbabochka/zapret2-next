@@ -15,7 +15,10 @@
 --filter-udp=1024-65535
 --filter-l7=stun,discord
 --payload=stun,discord_ip_discovery
---lua-desync=fake:blob=voice_zero:repeats=2
+--lua-desync=fake:blob=discord_voice:repeats=3
+--payload=all
+--out-range=n2-n4
+--lua-desync=fake:blob=discord_voice:repeats=10
 [GAME_UDP]
 --filter-udp=12
 --payload=all
