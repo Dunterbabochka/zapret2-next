@@ -1,9 +1,11 @@
 # Zapret 2 NEXT generated configuration
 # Preset: {{PRESET}}
 # Game filter: {{GAME_MODE}}
+# IPSet filter: {{IPSET_MODE}}
+# Discord Voice: {{VOICE_MODE}}
 
 --chdir="{{BIN_DIR}}"
---debug=0
+--debug={{DEBUG}}
 --ctrack-disable=0
 --ipcache-lifetime=8400
 --ipcache-hostname=1
@@ -23,6 +25,5 @@
 --blob=quic_google:@fake/quic_initial_www_google_com.bin
 --blob=stun:@fake/stun.bin
 --blob=discord_voice:@fake/quic_initial_dbankcloud_ru.bin
---blob=voice_zero:0x00000000000000000000000000000000
 --blob=http_iana:@fake/http_iana_org.bin
 --blob=zero:@fake/zero_512.bin

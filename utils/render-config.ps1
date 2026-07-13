@@ -6,6 +6,17 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Output,
 
+    [ValidateSet('off', 'tcp', 'udp', 'all')]
+    [string]$GameMode,
+
+    [ValidateSet('loaded', 'none', 'any')]
+    [string]$IPSetMode,
+
+    [ValidateSet('compatible', 'standard', 'off')]
+    [string]$VoiceMode,
+
+    [string]$DebugLog,
+
     [switch]$InterceptOff,
 
     [switch]$DryRun
@@ -46,17 +57,42 @@ foreach ($name in $required) {
     }
 }
 
-$gameModePath = Join-Path $root 'utils\game_filter.mode'
-$gameMode = 'off'
-if (Test-Path -LiteralPath $gameModePath) {
-    $value = (Get-Content -LiteralPath $gameModePath -TotalCount 1).Trim().ToLowerInvariant()
-    if ($value -in @('off', 'tcp', 'udp', 'all')) { $gameMode = $value }
+$parameterOverrides = @{}
+foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    $parameterOverrides[$entry.Key] = $entry.Value
 }
+
+function Get-ModeSetting {
+    param(
+        [string]$ParameterName,
+        [string]$RelativePath,
+        [string]$Default,
+        [string[]]$Allowed
+    )
+
+    if ($parameterOverrides.ContainsKey($ParameterName)) {
+        return ([string]$parameterOverrides[$ParameterName]).ToLowerInvariant()
+    }
+
+    $path = Join-Path $root $RelativePath
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $lines = @(Get-Content -LiteralPath $path -TotalCount 1)
+        if ($lines.Count -gt 0) {
+            $value = ([string]$lines[0]).Trim().ToLowerInvariant()
+            if ($value -in $Allowed) { return $value }
+        }
+    }
+    return $Default
+}
+
+$gameMode = Get-ModeSetting 'GameMode' 'utils\game_filter.mode' 'off' @('off', 'tcp', 'udp', 'all')
+$ipsetMode = Get-ModeSetting 'IPSetMode' 'utils\ipset_filter.mode' 'loaded' @('loaded', 'none', 'any')
+$voiceMode = Get-ModeSetting 'VoiceMode' 'utils\voice_filter.mode' 'compatible' @('compatible', 'standard', 'off')
 
 $gameTcp = if ($gameMode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
 $gameUdp = if ($gameMode -in @('udp', 'all')) { '1024-65535' } else { '12' }
-$wfUdp = if ($sections.ContainsKey('WF_UDP') -and $sections['WF_UDP'].Count -gt 0) {
-    (($sections['WF_UDP'] -join '').Trim())
+$wfUdp = if ($voiceMode -eq 'compatible' -or $gameMode -in @('udp', 'all')) {
+    '1024-65535'
 } else {
     "443,19294-19344,50000-50100,$gameUdp"
 }
@@ -69,37 +105,69 @@ foreach ($name in $required) {
     $value = ($sections[$name] -join "`r`n").Trim()
     $content = $content.Replace("{{$name}}", $value)
 }
-$discordUdp = if ($sections.ContainsKey('DISCORD_UDP') -and $sections['DISCORD_UDP'].Count -gt 0) {
-    ($sections['DISCORD_UDP'] -join "`r`n").Trim()
-} else {
-    @(
-        '--filter-udp=19294-19344,50000-50100'
-        '--filter-l7=stun,discord'
-        '--payload=stun,discord_ip_discovery'
-        '--out-range=-d5'
-        '--lua-desync=fake:blob=zero:repeats=6'
-    ) -join "`r`n"
+$voiceUdpProfile = switch ($voiceMode) {
+    'compatible' {
+        @(
+            '--filter-udp=1024-65535'
+            '--filter-l7=stun,discord'
+            '--payload=stun,discord_ip_discovery'
+            '--lua-desync=fake:blob=discord_voice:repeats=3'
+            '--payload=all'
+            '--out-range=n2-n4'
+            '--lua-desync=fake:blob=discord_voice:repeats=10'
+        ) -join "`r`n"
+    }
+    'standard' {
+        @(
+            '--filter-udp=1024-65535'
+            '--filter-l7=stun,discord'
+            '--payload=stun,discord_ip_discovery'
+            '--lua-desync=fake:blob=0x00000000000000000000000000000000:repeats=2'
+        ) -join "`r`n"
+    }
+    'off' {
+        @(
+            '--filter-udp=1024-65535'
+            '--filter-l7=stun,discord'
+        ) -join "`r`n"
+    }
 }
-$content = $content.Replace('{{DISCORD_UDP}}', $discordUdp)
-$gameUdpProfile = if ($sections.ContainsKey('GAME_UDP') -and $sections['GAME_UDP'].Count -gt 0) {
-    ($sections['GAME_UDP'] -join "`r`n").Trim()
-} else {
-    @(
+$content = $content.Replace('{{VOICE_UDP_PROFILE}}', $voiceUdpProfile)
+
+$ipsetInclude = switch ($ipsetMode) {
+    'loaded' { '--ipset=../lists/ipset-all.txt' }
+    'none' { '--ipset=../lists/ipset-none.txt' }
+    'any' { '' }
+}
+$content = $content.Replace('{{IPSET_INCLUDE}}', $ipsetInclude)
+
+$gameUdpProfile = @(
         "--filter-udp=$gameUdp"
-        '--ipset=../lists/ipset-all.txt'
+        '{{IPSET_INCLUDE}}'
         '--ipset-exclude=../lists/ipset-exclude.txt'
         '--ipset-exclude=../lists/ipset-exclude-user.txt'
         '--payload=all'
         '--out-range=-n4'
         '--lua-desync=fake:blob=discord_voice:repeats=10:payload=all'
     ) -join "`r`n"
-}
+$gameUdpProfile = $gameUdpProfile.Replace('{{IPSET_INCLUDE}}', $ipsetInclude)
 $content = $content.Replace('{{GAME_UDP_PROFILE}}', $gameUdpProfile)
 $content = $content.Replace('{{PRESET}}', $Preset)
 $content = $content.Replace('{{GAME_MODE}}', $gameMode)
+$content = $content.Replace('{{IPSET_MODE}}', $ipsetMode)
+$content = $content.Replace('{{VOICE_MODE}}', $voiceMode)
 $content = $content.Replace('{{GAME_TCP}}', $gameTcp)
 $content = $content.Replace('{{GAME_UDP}}', $gameUdp)
 $content = $content.Replace('{{WF_UDP}}', $wfUdp)
+$debugValue = '0'
+if ($parameterOverrides.ContainsKey('DebugLog')) {
+    if ([string]::IsNullOrWhiteSpace($DebugLog)) {
+        throw 'DebugLog must be a non-empty file path.'
+    }
+    $debugPath = [IO.Path]::GetFullPath($DebugLog).Replace('\', '/')
+    $debugValue = '@"' + $debugPath + '"'
+}
+$content = $content.Replace('{{DEBUG}}', $debugValue)
 $rootDir = $root.Replace('\', '/')
 $binDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
 

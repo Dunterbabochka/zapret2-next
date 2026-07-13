@@ -80,11 +80,9 @@ call :read_ipset_mode
 exit /b
 
 :read_ipset_mode
-set "IPSET_FILE=%ROOT%\lists\ipset-all.txt"
 set "IPSET_MODE=loaded"
-for %%F in ("!IPSET_FILE!") do if %%~zF==0 set "IPSET_MODE=any"
-findstr /X /C:"203.0.113.113/32" "!IPSET_FILE!" >nul 2>&1
-if not errorlevel 1 set "IPSET_MODE=none"
+if exist "%ROOT%\utils\ipset_filter.mode" set /p IPSET_MODE=<"%ROOT%\utils\ipset_filter.mode"
+if /I not "!IPSET_MODE!"=="loaded" if /I not "!IPSET_MODE!"=="none" if /I not "!IPSET_MODE!"=="any" set "IPSET_MODE=loaded"
 exit /b
 
 :install_service
@@ -184,7 +182,7 @@ if "%mode%"=="1" set "newmode=all"
 if "%mode%"=="2" set "newmode=tcp"
 if "%mode%"=="3" set "newmode=udp"
 if not defined newmode goto invalid_choice
->"%ROOT%\utils\game_filter.mode" echo !newmode!
+>"%ROOT%\utils\game_filter.mode" echo(!newmode!
 call :refresh_service_config
 pause
 goto menu
@@ -192,24 +190,15 @@ goto menu
 :ipset_filter
 cls
 call :read_ipset_mode
-set "IPSET_FILE=%ROOT%\lists\ipset-all.txt"
-set "IPSET_BACKUP=%ROOT%\lists\ipset-all.txt.backup"
-if "!IPSET_MODE!"=="loaded" (
-  copy /y "!IPSET_FILE!" "!IPSET_BACKUP!" >nul
-  >"!IPSET_FILE!" echo 203.0.113.113/32
-  call :green "IPSet mode changed: loaded -^> none"
-) else if "!IPSET_MODE!"=="none" (
-  type nul >"!IPSET_FILE!"
-  call :green "IPSet mode changed: none -^> any"
+if /I "!IPSET_MODE!"=="loaded" (
+  set "newmode=none"
+) else if /I "!IPSET_MODE!"=="none" (
+  set "newmode=any"
 ) else (
-  if not exist "!IPSET_BACKUP!" (
-    call :red "No IPSet backup found. Use Update IPSet List first."
-    pause
-    goto menu
-  )
-  copy /y "!IPSET_BACKUP!" "!IPSET_FILE!" >nul
-  call :green "IPSet mode changed: any -^> loaded"
+  set "newmode=loaded"
 )
+>"%ROOT%\utils\ipset_filter.mode" echo(!newmode!
+call :green "IPSet mode changed: !IPSET_MODE! -^> !newmode!"
 call :refresh_service_config
 pause
 goto menu

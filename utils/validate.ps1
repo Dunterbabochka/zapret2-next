@@ -67,82 +67,238 @@ if ($serviceContent -notmatch '(?m)^echo {6}10\. Run Diagnostics\r?$' -or
 if ($serviceContent -notmatch '(?m)^start "Zapret 2 NEXT tests" powershell -NoExit ') {
     Add-ValidationError 'The test console must stay open so failures remain visible.'
 }
+$ipsetMenuBlock = [regex]::Match($serviceContent, '(?ms)^:ipset_filter\r?\n.*?(?=^:[A-Za-z_]+\r?$)').Value
+if ($ipsetMenuBlock -notmatch 'utils\\ipset_filter\.mode') {
+    Add-ValidationError 'The IPSet menu must persist its selection in ipset_filter.mode.'
+}
+if ($ipsetMenuBlock -match 'ipset-all\.txt|IPSET_BACKUP|type nul|copy /y') {
+    Add-ValidationError 'The IPSet menu must not mutate or restore the loaded IPSet source.'
+}
+
+$noneEntries = @(Get-Content -LiteralPath (Join-Path $root 'lists\ipset-none.txt') |
+    ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') })
+if ($noneEntries.Count -ne 1 -or $noneEntries[0] -ne '203.0.113.113/32') {
+    Add-ValidationError 'ipset-none.txt must contain only the TEST-NET sentinel.'
+}
 
 $presets = Get-ChildItem -LiteralPath $presetDir -Filter '*.txt.in' |
     Where-Object { $_.BaseName -notlike '_*' } |
     Sort-Object Name
 if ($presets.Count -lt 6) { Add-ValidationError "Only $($presets.Count) public presets found; at least 6 are required." }
 
-$originalModePath = Join-Path $root 'utils\game_filter.mode'
-$originalMode = if (Test-Path $originalModePath) { Get-Content $originalModePath -Raw } else { $null }
-$modes = if ($Quick) { @('off') } else { @('off', 'tcp', 'udp', 'all') }
+$gameModes = if ($Quick) { @('off') } else { @('off', 'tcp', 'udp', 'all') }
+$ipsetModes = if ($Quick) { @('loaded') } else { @('loaded', 'none', 'any') }
+$voiceModes = if ($Quick) { @('compatible') } else { @('compatible', 'standard', 'off') }
+$renderCount = 0
+$expectedRootDir = $root.Replace('\', '/')
+$expectedBinDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
 
-try {
-    foreach ($mode in $modes) {
-        [IO.File]::WriteAllText($originalModePath, "$mode`r`n", [Text.Encoding]::ASCII)
-        foreach ($preset in $presets) {
-            $name = $preset.BaseName -replace '\.txt$', ''
-            $presetTemplate = Get-Content -LiteralPath $preset.FullName -Raw
-            $hasCustomGameUdp = $presetTemplate -match '(?m)^\[GAME_UDP\]\s*$'
-            $output = Join-Path $runtimeDir ("{0}-{1}.txt" -f ($name -replace ' ', '_'), $mode)
-            try {
-                & $renderer -Preset $name -Output $output | Out-Null
-            } catch {
-                Add-ValidationError "$name/$mode render failed: $($_.Exception.Message)"
-                continue
-            }
+function Get-ProfileLines([string]$Content, [string]$Marker) {
+    $blocks = @(($Content -split '(?m)^--new\r?$') | Where-Object { $_.Contains($Marker) })
+    if ($blocks.Count -ne 1) { return @() }
+    return @($blocks[0] -split "`r?`n" |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -and -not $_.StartsWith('#') })
+}
 
-            $content = Get-Content -LiteralPath $output -Raw
-            $lines = @($content -split "`r?`n" | ForEach-Object { $_.Trim() })
-            if ($content -match '\{\{') { Add-ValidationError "$name/$mode contains an unresolved token." }
-            if ($content -match '--dpi-desync') { Add-ValidationError "$name/$mode contains a Zapret 1 option." }
-            if ($content -match '(?:@|=)\.\./|@fake/') {
-                Add-ValidationError "$name/$mode contains a cwd-dependent resource path."
-            }
-            $expectedRootDir = $root.Replace('\', '/')
-            $expectedBinDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
-            if ($lines -notcontains ('--chdir="' + $expectedBinDir + '"')) {
-                Add-ValidationError "$name/$mode does not set an explicit quoted bin directory."
-            }
-            if ($lines -notcontains ('--lua-init=@"' + $expectedRootDir + '/lua/zapret-antidpi.lua"')) {
-                Add-ValidationError "$name/$mode does not load the official antidpi library."
-            }
-            $expectedTcp = if ($mode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
-            $expectedUdp = if ($mode -in @('udp', 'all')) { '1024-65535' } else { '12' }
-            if ($lines -notcontains "--filter-tcp=$expectedTcp") { Add-ValidationError "$name/$mode has the wrong game TCP filter." }
-            if (-not $hasCustomGameUdp -and $lines -notcontains "--filter-udp=$expectedUdp") {
-                Add-ValidationError "$name/$mode has the wrong game UDP filter."
-            }
-            if ($name -eq 'VOICE') {
-                if ($lines -notcontains '--wf-udp-out=1024-65535') {
-                    Add-ValidationError 'VOICE must capture the dynamic Discord UDP port range.'
-                }
-                if ($lines -notcontains '--filter-l7=stun,discord') {
-                    Add-ValidationError 'VOICE must isolate Discord media through the official L7 filter.'
-                }
-            }
-            Test-ReferencedFiles -ConfigPath $output -PresetName "$name/$mode"
+function Get-SavedMode([string]$Path, [string]$Default, [string[]]$Allowed) {
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        $lines = @(Get-Content -LiteralPath $Path -TotalCount 1)
+        if ($lines.Count -gt 0) {
+            $value = ([string]$lines[0]).Trim().ToLowerInvariant()
+            if ($value -in $Allowed) { return $value }
         }
     }
+    return $Default
+}
 
-    $dryOutput = Join-Path $runtimeDir 'general-dry-run.txt'
-    try {
-        & $renderer -Preset 'general' -Output $dryOutput -DryRun | Out-Null
-        $dryLines = @(Get-Content -LiteralPath $dryOutput | ForEach-Object { $_.Trim() })
-        if ($dryLines -notcontains '--dry-run') {
-            Add-ValidationError 'Dry-run config does not enable --dry-run.'
-        }
-        if ($dryLines -notcontains '--wf-dup-check=0') {
-            Add-ValidationError 'Dry-run config does not disable duplicate-filter checks.'
-        }
-    } catch {
-        Add-ValidationError "Dry-run render failed: $($_.Exception.Message)"
-    }
-} finally {
-    if ($null -eq $originalMode) {
-        Remove-Item -LiteralPath $originalModePath -Force -ErrorAction SilentlyContinue
+$statePaths = @(
+    (Join-Path $root 'utils\game_filter.mode'),
+    (Join-Path $root 'utils\ipset_filter.mode'),
+    (Join-Path $root 'utils\voice_filter.mode'),
+    (Join-Path $root 'lists\ipset-all.txt')
+)
+$stateBefore = @{}
+foreach ($path in $statePaths) {
+    $stateBefore[$path] = if (Test-Path -LiteralPath $path -PathType Leaf) {
+        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
     } else {
-        [IO.File]::WriteAllText($originalModePath, $originalMode, [Text.Encoding]::ASCII)
+        '<missing>'
+    }
+}
+
+foreach ($preset in $presets) {
+    $presetTemplate = Get-Content -LiteralPath $preset.FullName -Raw
+    $legacySections = @([regex]::Matches($presetTemplate, '(?m)^\[(?:WF_UDP|DISCORD_UDP|GAME_UDP)\]\s*$') |
+        ForEach-Object { $_.Value })
+    if ($legacySections.Count -gt 0) {
+        Add-ValidationError "$($preset.Name) still couples a web preset to independent modes: $($legacySections -join ', ')."
+    }
+}
+
+foreach ($gameMode in $gameModes) {
+    foreach ($ipsetMode in $ipsetModes) {
+        foreach ($voiceMode in $voiceModes) {
+            foreach ($preset in $presets) {
+                $name = $preset.BaseName -replace '\.txt$', ''
+                $label = "$name/game=$gameMode/ipset=$ipsetMode/voice=$voiceMode"
+                $safeName = $name -replace ' ', '_'
+                $output = Join-Path $runtimeDir ("{0}-g-{1}-i-{2}-v-{3}.txt" -f $safeName, $gameMode, $ipsetMode, $voiceMode)
+                try {
+                    & $renderer -Preset $name -Output $output -GameMode $gameMode -IPSetMode $ipsetMode -VoiceMode $voiceMode | Out-Null
+                    $renderCount++
+                } catch {
+                    Add-ValidationError "$label render failed: $($_.Exception.Message)"
+                    continue
+                }
+
+                $content = Get-Content -LiteralPath $output -Raw
+                $lines = @($content -split "`r?`n" | ForEach-Object { $_.Trim() })
+                if ($content -match '\{\{') { Add-ValidationError "$label contains an unresolved token." }
+                if ($content -match '--dpi-desync') { Add-ValidationError "$label contains a Zapret 1 option." }
+                if ($content -match '(?:@|=)\.\./|@fake/') {
+                    Add-ValidationError "$label contains a cwd-dependent resource path."
+                }
+                if ($lines -notcontains '--debug=0') { Add-ValidationError "$label unexpectedly enables debug logging." }
+                if ($lines -notcontains ('--chdir="' + $expectedBinDir + '"')) {
+                    Add-ValidationError "$label does not set an explicit quoted bin directory."
+                }
+                if ($lines -notcontains ('--lua-init=@"' + $expectedRootDir + '/lua/zapret-antidpi.lua"')) {
+                    Add-ValidationError "$label does not load the official antidpi library."
+                }
+                foreach ($header in @(
+                    "# Game filter: $gameMode",
+                    "# IPSet filter: $ipsetMode",
+                    "# Discord Voice: $voiceMode"
+                )) {
+                    if ($lines -notcontains $header) { Add-ValidationError "$label is missing header '$header'." }
+                }
+
+                $expectedTcp = if ($gameMode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
+                $expectedUdp = if ($gameMode -in @('udp', 'all')) { '1024-65535' } else { '12' }
+                $gameTcpProfile = @(Get-ProfileLines -Content $content -Marker '# Optional game TCP filter')
+                $gameUdpProfile = @(Get-ProfileLines -Content $content -Marker '# Optional game UDP profile')
+                if ($gameTcpProfile.Count -eq 0 -or $gameTcpProfile[0] -ne "--filter-tcp=$expectedTcp") {
+                    Add-ValidationError "$label has the wrong Game TCP profile."
+                }
+                if ($gameUdpProfile.Count -eq 0 -or $gameUdpProfile[0] -ne "--filter-udp=$expectedUdp") {
+                    Add-ValidationError "$label has the wrong Game UDP profile."
+                }
+
+                $expectedVoiceProfile = switch ($voiceMode) {
+                    'compatible' {
+                        @(
+                            '--filter-udp=1024-65535'
+                            '--filter-l7=stun,discord'
+                            '--payload=stun,discord_ip_discovery'
+                            '--lua-desync=fake:blob=discord_voice:repeats=3'
+                            '--payload=all'
+                            '--out-range=n2-n4'
+                            '--lua-desync=fake:blob=discord_voice:repeats=10'
+                        )
+                    }
+                    'standard' {
+                        @(
+                            '--filter-udp=1024-65535'
+                            '--filter-l7=stun,discord'
+                            '--payload=stun,discord_ip_discovery'
+                            '--lua-desync=fake:blob=0x00000000000000000000000000000000:repeats=2'
+                        )
+                    }
+                    'off' {
+                        @(
+                            '--filter-udp=1024-65535'
+                            '--filter-l7=stun,discord'
+                        )
+                    }
+                }
+                $voiceMarker = '# Discord Voice (must stay before the Game UDP fallback)'
+                $voiceProfile = @(Get-ProfileLines -Content $content -Marker $voiceMarker)
+                if (($voiceProfile -join "`n") -cne ($expectedVoiceProfile -join "`n")) {
+                    Add-ValidationError "$label has the wrong Discord Voice profile."
+                }
+                $voiceIndex = $content.IndexOf($voiceMarker, [StringComparison]::Ordinal)
+                $gameUdpIndex = $content.IndexOf('# Optional game UDP profile', [StringComparison]::Ordinal)
+                if ($voiceIndex -lt 0 -or $gameUdpIndex -lt 0 -or $voiceIndex -ge $gameUdpIndex) {
+                    Add-ValidationError "$label does not keep Discord Voice before the Game UDP fallback."
+                }
+
+                $expectedWfUdp = if ($voiceMode -eq 'compatible' -or $gameMode -in @('udp', 'all')) {
+                    '1024-65535'
+                } else {
+                    "443,19294-19344,50000-50100,$expectedUdp"
+                }
+                if ($lines -notcontains "--wf-udp-out=$expectedWfUdp") {
+                    Add-ValidationError "$label has the wrong UDP interception range."
+                }
+
+                $ipsetLines = @($lines | Where-Object { $_ -match '^--ipset=' })
+                if ($ipsetMode -eq 'any') {
+                    if ($ipsetLines.Count -ne 0) { Add-ValidationError "$label must not constrain profiles with an IPSet." }
+                } else {
+                    $ipsetFile = if ($ipsetMode -eq 'loaded') { 'ipset-all.txt' } else { 'ipset-none.txt' }
+                    $expectedIPSetPath = [IO.Path]::GetFullPath((Join-Path $root "lists\$ipsetFile")).Replace('\', '/')
+                    $expectedIPSetLine = '--ipset="' + $expectedIPSetPath + '"'
+                    if ($ipsetLines.Count -ne 4 -or @($ipsetLines | Where-Object { $_ -eq $expectedIPSetLine }).Count -ne 4) {
+                        Add-ValidationError "$label does not use the stable $ipsetMode IPSet source in every fallback profile."
+                    }
+                }
+
+                Test-ReferencedFiles -ConfigPath $output -PresetName $label
+            }
+        }
+    }
+}
+
+$dryOutput = Join-Path $runtimeDir 'general-dry-run.txt'
+try {
+    & $renderer -Preset 'general' -Output $dryOutput -GameMode off -IPSetMode loaded -VoiceMode compatible -DryRun | Out-Null
+    $dryLines = @(Get-Content -LiteralPath $dryOutput | ForEach-Object { $_.Trim() })
+    if ($dryLines -notcontains '--dry-run') { Add-ValidationError 'Dry-run config does not enable --dry-run.' }
+    if ($dryLines -notcontains '--wf-dup-check=0') { Add-ValidationError 'Dry-run config does not disable duplicate-filter checks.' }
+} catch {
+    Add-ValidationError "Dry-run render failed: $($_.Exception.Message)"
+}
+
+$debugOutput = Join-Path $runtimeDir 'general-debug-override.txt'
+$debugLog = Join-Path $runtimeDir 'renderer debug.log'
+try {
+    & $renderer -Preset 'general' -Output $debugOutput -GameMode off -IPSetMode any -VoiceMode off -DebugLog $debugLog | Out-Null
+    $debugLines = @(Get-Content -LiteralPath $debugOutput | ForEach-Object { $_.Trim() })
+    $expectedDebugPath = [IO.Path]::GetFullPath($debugLog).Replace('\', '/')
+    if ($debugLines -notcontains ('--debug=@"' + $expectedDebugPath + '"')) {
+        Add-ValidationError 'DebugLog override is not rendered as an absolute quoted path.'
+    }
+} catch {
+    Add-ValidationError "DebugLog override render failed: $($_.Exception.Message)"
+}
+
+$savedOutput = Join-Path $runtimeDir 'general-saved-modes.txt'
+try {
+    & $renderer -Preset 'general' -Output $savedOutput | Out-Null
+    $savedLines = @(Get-Content -LiteralPath $savedOutput | ForEach-Object { $_.Trim() })
+    $savedGameMode = Get-SavedMode (Join-Path $root 'utils\game_filter.mode') 'off' @('off', 'tcp', 'udp', 'all')
+    $savedIPSetMode = Get-SavedMode (Join-Path $root 'utils\ipset_filter.mode') 'loaded' @('loaded', 'none', 'any')
+    $savedVoiceMode = Get-SavedMode (Join-Path $root 'utils\voice_filter.mode') 'compatible' @('compatible', 'standard', 'off')
+    foreach ($header in @(
+        "# Game filter: $savedGameMode",
+        "# IPSet filter: $savedIPSetMode",
+        "# Discord Voice: $savedVoiceMode"
+    )) {
+        if ($savedLines -notcontains $header) { Add-ValidationError "Saved-mode render is missing header '$header'." }
+    }
+} catch {
+    Add-ValidationError "Saved-mode render failed: $($_.Exception.Message)"
+}
+
+foreach ($path in $statePaths) {
+    $stateAfter = if (Test-Path -LiteralPath $path -PathType Leaf) {
+        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    } else {
+        '<missing>'
+    }
+    if ($stateAfter -ne $stateBefore[$path]) {
+        Add-ValidationError "Validation changed user state: $path"
     }
 }
 
@@ -157,5 +313,5 @@ if ($errors.Count -gt 0) {
     Write-Host "Validation failed with $($errors.Count) error(s)." -ForegroundColor Red
     exit 1
 }
-Write-Host "Validation passed: $($presets.Count) presets, modes: $($modes -join ', ')." -ForegroundColor Green
+Write-Host "Validation passed: $($presets.Count) presets, $renderCount configurations (Game: $($gameModes -join ', '); IPSet: $($ipsetModes -join ', '); Voice: $($voiceModes -join ', '))." -ForegroundColor Green
 exit 0

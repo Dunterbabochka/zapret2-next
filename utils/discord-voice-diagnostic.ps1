@@ -99,15 +99,7 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path $resultDir | Out-Null
-    & $renderer -Preset $Preset -Output $configPath | Out-Null
-    $config = Get-Content -LiteralPath $configPath -Raw
-    $debugTarget = $debugLog.Replace('\', '/')
-    $debugOption = '--debug=@"' + $debugTarget + '"'
-    if (-not $config.Contains('--debug=0')) {
-        throw 'Generated config has no --debug=0 marker.'
-    }
-    $config = $config.Replace('--debug=0', $debugOption)
-    [IO.File]::WriteAllText($configPath, $config, [Text.Encoding]::ASCII)
+    & $renderer -Preset $Preset -Output $configPath -VoiceMode compatible -DebugLog $debugLog | Out-Null
 
     Write-Host ''
     Write-Host "Starting winws2 with preset $Preset and debug logging..." -ForegroundColor Cyan

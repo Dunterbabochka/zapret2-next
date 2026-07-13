@@ -9,8 +9,3 @@
 --lua-desync=multisplit:pos=2:seqovl=8:seqovl_pattern=zero:tcp_ts_up
 [QUIC]
 --lua-desync=fake:blob=quic_google:repeats=11
-[DISCORD_UDP]
---filter-udp=19294-19344,50000-50100
---filter-l7=discord,stun
---payload=stun,discord_ip_discovery
---lua-desync=fake:blob=discord_voice:repeats=3

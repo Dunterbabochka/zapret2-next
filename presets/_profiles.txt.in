@@ -11,8 +11,8 @@
 {{QUIC}}
 --new
 
-# Discord voice discovery and STUN
-{{DISCORD_UDP}}
+# Discord Voice (must stay before the Game UDP fallback)
+{{VOICE_UDP_PROFILE}}
 --new
 
 # Discord media TLS
@@ -59,7 +59,7 @@
 
 # IPSet fallback UDP
 --filter-udp=443
---ipset=../lists/ipset-all.txt
+{{IPSET_INCLUDE}}
 --ipset-exclude=../lists/ipset-exclude.txt
 --ipset-exclude=../lists/ipset-exclude-user.txt
 --payload=quic_initial
@@ -69,7 +69,7 @@
 
 # IPSet fallback TCP
 --filter-tcp=80,443
---ipset=../lists/ipset-all.txt
+{{IPSET_INCLUDE}}
 --ipset-exclude=../lists/ipset-exclude.txt
 --ipset-exclude=../lists/ipset-exclude-user.txt
 --payload=http_req,tls_client_hello
@@ -79,7 +79,7 @@
 
 # Optional game TCP filter; port 12 is a disabled sentinel
 --filter-tcp={{GAME_TCP}}
---ipset=../lists/ipset-all.txt
+{{IPSET_INCLUDE}}
 --ipset-exclude=../lists/ipset-exclude.txt
 --ipset-exclude=../lists/ipset-exclude-user.txt
 --payload=all
