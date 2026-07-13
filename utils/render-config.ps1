@@ -55,6 +55,14 @@ if (Test-Path -LiteralPath $gameModePath) {
 
 $gameTcp = if ($gameMode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
 $gameUdp = if ($gameMode -in @('udp', 'all')) { '1024-65535' } else { '12' }
+$wfUdp = if ($sections.ContainsKey('WF_UDP') -and $sections['WF_UDP'].Count -gt 0) {
+    (($sections['WF_UDP'] -join '').Trim())
+} else {
+    "443,19294-19344,50000-50100,$gameUdp"
+}
+if ($wfUdp -notmatch '^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$') {
+    throw "Invalid [WF_UDP] value: $wfUdp"
+}
 
 $content = (Get-Content -LiteralPath $basePath -Raw) + "`r`n" + (Get-Content -LiteralPath $profilesPath -Raw)
 foreach ($name in $required) {
@@ -73,10 +81,25 @@ $discordUdp = if ($sections.ContainsKey('DISCORD_UDP') -and $sections['DISCORD_U
     ) -join "`r`n"
 }
 $content = $content.Replace('{{DISCORD_UDP}}', $discordUdp)
+$gameUdpProfile = if ($sections.ContainsKey('GAME_UDP') -and $sections['GAME_UDP'].Count -gt 0) {
+    ($sections['GAME_UDP'] -join "`r`n").Trim()
+} else {
+    @(
+        "--filter-udp=$gameUdp"
+        '--ipset=../lists/ipset-all.txt'
+        '--ipset-exclude=../lists/ipset-exclude.txt'
+        '--ipset-exclude=../lists/ipset-exclude-user.txt'
+        '--payload=all'
+        '--out-range=-n4'
+        '--lua-desync=fake:blob=discord_voice:repeats=10:payload=all'
+    ) -join "`r`n"
+}
+$content = $content.Replace('{{GAME_UDP_PROFILE}}', $gameUdpProfile)
 $content = $content.Replace('{{PRESET}}', $Preset)
 $content = $content.Replace('{{GAME_MODE}}', $gameMode)
 $content = $content.Replace('{{GAME_TCP}}', $gameTcp)
 $content = $content.Replace('{{GAME_UDP}}', $gameUdp)
+$content = $content.Replace('{{WF_UDP}}', $wfUdp)
 $rootDir = $root.Replace('\', '/')
 $binDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
 

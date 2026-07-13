@@ -87,11 +87,5 @@
 {{TCP_GENERIC}}
 --new
 
-# Optional game UDP filter; port 12 is a disabled sentinel
---filter-udp={{GAME_UDP}}
---ipset=../lists/ipset-all.txt
---ipset-exclude=../lists/ipset-exclude.txt
---ipset-exclude=../lists/ipset-exclude-user.txt
---payload=all
---out-range=-n4
---lua-desync=fake:blob=discord_voice:repeats=10:payload=all
+# Optional game UDP profile
+{{GAME_UDP_PROFILE}}

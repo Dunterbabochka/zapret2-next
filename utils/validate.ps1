@@ -82,6 +82,8 @@ try {
         [IO.File]::WriteAllText($originalModePath, "$mode`r`n", [Text.Encoding]::ASCII)
         foreach ($preset in $presets) {
             $name = $preset.BaseName -replace '\.txt$', ''
+            $presetTemplate = Get-Content -LiteralPath $preset.FullName -Raw
+            $hasCustomGameUdp = $presetTemplate -match '(?m)^\[GAME_UDP\]\s*$'
             $output = Join-Path $runtimeDir ("{0}-{1}.txt" -f ($name -replace ' ', '_'), $mode)
             try {
                 & $renderer -Preset $name -Output $output | Out-Null
@@ -108,7 +110,17 @@ try {
             $expectedTcp = if ($mode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
             $expectedUdp = if ($mode -in @('udp', 'all')) { '1024-65535' } else { '12' }
             if ($lines -notcontains "--filter-tcp=$expectedTcp") { Add-ValidationError "$name/$mode has the wrong game TCP filter." }
-            if ($lines -notcontains "--filter-udp=$expectedUdp") { Add-ValidationError "$name/$mode has the wrong game UDP filter." }
+            if (-not $hasCustomGameUdp -and $lines -notcontains "--filter-udp=$expectedUdp") {
+                Add-ValidationError "$name/$mode has the wrong game UDP filter."
+            }
+            if ($name -eq 'VOICE') {
+                if ($lines -notcontains '--wf-udp-out=1024-65535') {
+                    Add-ValidationError 'VOICE must capture the dynamic Discord UDP port range.'
+                }
+                if ($lines -notcontains '--filter-l7=stun,discord') {
+                    Add-ValidationError 'VOICE must isolate Discord media through the official L7 filter.'
+                }
+            }
             Test-ReferencedFiles -ConfigPath $output -PresetName "$name/$mode"
         }
     }

@@ -13,7 +13,7 @@
 --lua-init=@../lua/zapret-auto.lua
 
 --wf-tcp-out=80,443,2053,2083,2087,2096,8443,{{GAME_TCP}}
---wf-udp-out=443,19294-19344,50000-50100,{{GAME_UDP}}
+--wf-udp-out={{WF_UDP}}
 --wf-raw-part=@../windivert.filter/windivert_part.discord_media.txt
 --wf-raw-part=@../windivert.filter/windivert_part.stun.txt
 --wf-raw-part=@../windivert.filter/windivert_part.wireguard.txt
@@ -23,5 +23,6 @@
 --blob=quic_google:@fake/quic_initial_www_google_com.bin
 --blob=stun:@fake/stun.bin
 --blob=discord_voice:@fake/quic_initial_dbankcloud_ru.bin
+--blob=voice_zero:0x00000000000000000000000000000000
 --blob=http_iana:@fake/http_iana_org.bin
 --blob=zero:@fake/zero_512.bin

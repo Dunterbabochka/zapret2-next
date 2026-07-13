@@ -38,6 +38,7 @@ Windows 10/11 x64 · Zapret 2 v1.0.2 · Discord · YouTube
 - `ALT5` — syndata + multidisorder;
 - `ALT11` — многоэтапный multisplit;
 - `ALT12` — профиль совместимости с голосовыми каналами Discord;
+- `VOICE` - experimental isolated Discord voice profile using the official Zapret 2 L7 filter;
 - `FAKE TLS AUTO` — fake с автоматическим подбором TTL;
 - `FAKE TLS AUTO ALT2` — auto-TTL + multisplit;
 - `SIMPLE FAKE` — упрощённая fake-стратегия.
