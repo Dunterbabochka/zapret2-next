@@ -61,8 +61,20 @@ if ($runnerContent -notmatch 'invoke-winws\.ps1') {
 
 $serviceContent = Get-Content -LiteralPath (Join-Path $root 'service.bat') -Raw
 if ($serviceContent -notmatch '(?m)^echo {6}10\. Run Diagnostics\r?$' -or
-    $serviceContent -notmatch '(?m)^echo {6}11\. Run Tests\r?$') {
-    Add-ValidationError 'The two-digit service menu items are not aligned.'
+    $serviceContent -notmatch '(?m)^echo {6}11\. Run Tests\r?$' -or
+    $serviceContent -notmatch '(?m)^echo {6}12\. Discord Voice') {
+    Add-ValidationError 'The two-digit service menu items are not aligned or Discord Voice is missing.'
+}
+if ($serviceContent -notmatch 'Select option \(0-12\):' -or
+    $serviceContent -notmatch 'goto voice_filter' -or
+    $serviceContent -notmatch 'Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!') {
+    Add-ValidationError 'The service menu must expose the combined configuration status and Discord Voice control.'
+}
+if ($serviceContent -notmatch ':get_service_status' -or
+    $serviceContent -notmatch 'Get-Service -Name' -or
+    $serviceContent -notmatch 'call :wait_for_service_status Stopped' -or
+    $serviceContent -notmatch 'call :wait_for_service_status Running') {
+    Add-ValidationError 'The service manager must use locale-independent status reads and wait for stop/start transitions.'
 }
 if ($serviceContent -notmatch '(?m)^start "Zapret 2 NEXT tests" powershell -NoExit ') {
     Add-ValidationError 'The test console must stay open so failures remain visible.'
@@ -81,10 +93,50 @@ if ($noneEntries.Count -ne 1 -or $noneEntries[0] -ne '203.0.113.113/32') {
     Add-ValidationError 'ipset-none.txt must contain only the TEST-NET sentinel.'
 }
 
-$presets = Get-ChildItem -LiteralPath $presetDir -Filter '*.txt.in' |
-    Where-Object { $_.BaseName -notlike '_*' } |
-    Sort-Object Name
-if ($presets.Count -lt 6) { Add-ValidationError "Only $($presets.Count) public presets found; at least 6 are required." }
+$publicPresetNames = @('general', 'ALT', 'ALT3', 'ALT5', 'ALT11', 'FAKE TLS AUTO ALT2')
+$presets = foreach ($name in $publicPresetNames) {
+    $path = Join-Path $presetDir "$name.txt.in"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Add-ValidationError "Missing public preset: $name"
+        continue
+    }
+    Get-Item -LiteralPath $path
+}
+if ($presets.Count -ne $publicPresetNames.Count) {
+    Add-ValidationError "Expected $($publicPresetNames.Count) public presets; found $($presets.Count)."
+}
+
+$expectedPublicLaunchers = @(
+    'general.bat', 'general (ALT).bat', 'general (ALT3).bat', 'general (ALT5).bat',
+    'general (ALT11).bat', 'general (FAKE TLS AUTO ALT2).bat'
+)
+$rootBatches = @(Get-ChildItem -LiteralPath $root -Filter '*.bat' -File | Select-Object -ExpandProperty Name)
+foreach ($launcher in $expectedPublicLaunchers) {
+    if ($rootBatches -notcontains $launcher) { Add-ValidationError "Missing public launcher: $launcher" }
+}
+foreach ($experimentalLauncher in @('general (ALT12).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
+    if ($rootBatches -contains $experimentalLauncher) { Add-ValidationError "Experimental launcher must not be public: $experimentalLauncher" }
+}
+if ($rootBatches -notcontains 'diagnose discord voice.bat') {
+    Add-ValidationError 'The Discord voice diagnostic launcher is missing.'
+}
+
+$releaseBuilder = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'build-release.ps1') -Raw
+foreach ($requiredReleaseFile in @($expectedPublicLaunchers + 'diagnose discord voice.bat')) {
+    if ($releaseBuilder -notmatch [regex]::Escape("'$requiredReleaseFile'")) {
+        Add-ValidationError "Release allowlist is missing: $requiredReleaseFile"
+    }
+}
+foreach ($excludedReleaseFile in @('general (ALT12).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
+    if ($releaseBuilder -match [regex]::Escape("'$excludedReleaseFile'")) {
+        Add-ValidationError "Release allowlist includes an experimental launcher: $excludedReleaseFile"
+    }
+}
+foreach ($excludedPreset in @('ALT12.txt.in', 'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in')) {
+    if ($releaseBuilder -notmatch [regex]::Escape("'$excludedPreset'")) {
+        Add-ValidationError "Release builder must remove experimental preset: $excludedPreset"
+    }
+}
 
 $gameModes = if ($Quick) { @('off') } else { @('off', 'tcp', 'udp', 'all') }
 $ipsetModes = if ($Quick) { @('loaded') } else { @('loaded', 'none', 'any') }

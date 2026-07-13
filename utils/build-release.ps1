@@ -16,15 +16,17 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 $topFiles = @(
     'README.md','LICENSE.txt','THIRD_PARTY_NOTICES.md','ENGINE_VERSION','SHA256SUMS.txt',
     'service.bat','general.bat','general (ALT).bat','general (ALT3).bat','general (ALT5).bat',
-    'general (ALT11).bat','general (ALT12).bat','general (VOICE).bat','general (FAKE TLS AUTO).bat','general (FAKE TLS AUTO ALT2).bat',
-    'general (SIMPLE FAKE).bat'
+    'general (ALT11).bat','general (FAKE TLS AUTO ALT2).bat','diagnose discord voice.bat',
+    'compatibility wizard.bat'
 )
 $dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
 foreach ($dir in $dirs) { Copy-Item (Join-Path $root $dir) (Join-Path $stage $dir) -Recurse -Force }
 Remove-Item (Join-Path $stage 'utils\build-release.ps1') -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $stage 'utils\configure-repository.ps1') -Force -ErrorAction SilentlyContinue
-
+foreach ($experimentalPreset in @('ALT12.txt.in', 'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in')) {
+    Remove-Item (Join-Path $stage "presets\$experimentalPreset") -Force -ErrorAction Stop
+}
 Compress-Archive -Path $stage -DestinationPath $zip -CompressionLevel Optimal
 $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash
 [IO.File]::WriteAllText((Join-Path $out 'release-sha256.txt'), "$zipHash  $(Split-Path $zip -Leaf)`r`n", [Text.Encoding]::ASCII)

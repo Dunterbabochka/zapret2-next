@@ -27,7 +27,8 @@ cls
 call :read_status
 echo.
 echo   ZAPRET 2 NEXT SERVICE MANAGER v%VERSION%
-echo   Strategy: !CURRENT_PRESET!   Service: !SERVICE_STATUS!
+echo   Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!
+echo   Service: !SERVICE_STATUS!
 echo   -----------------------------------------------
 echo.
 echo   :: SERVICE
@@ -39,6 +40,7 @@ echo   :: SETTINGS
 echo      4. Game Filter         [!GAME_MODE!]
 echo      5. IPSet Filter        [!IPSET_MODE!]
 echo      6. Auto-Update Check   [!UPDATE_MODE!]
+echo      12. Discord Voice      [!VOICE_MODE!]
 echo.
 echo   :: UPDATES
 echo      7. Update IPSet List
@@ -53,7 +55,7 @@ echo   -----------------------------------------------
 echo      0. Exit
 echo.
 set "choice="
-set /p "choice=   Select option (0-11): "
+set /p "choice=   Select option (0-12): "
 if "%choice%"=="1" goto install_service
 if "%choice%"=="2" goto remove_service
 if "%choice%"=="3" goto show_status
@@ -65,19 +67,39 @@ if "%choice%"=="8" goto update_hosts
 if "%choice%"=="9" goto manual_update_check
 if "%choice%"=="10" goto diagnostics
 if "%choice%"=="11" goto tests
+if "%choice%"=="12" goto voice_filter
 if "%choice%"=="0" exit /b 0
 goto menu
 
 :read_status
-set "SERVICE_STATUS=not installed"
-for /f "tokens=3" %%S in ('sc query "%SERVICE_NAME%" 2^>nul ^| findstr /I "STATE"') do set "SERVICE_STATUS=%%S"
+call :get_service_status
 set "CURRENT_PRESET=none"
 for /f "tokens=2,*" %%A in ('reg query "%STATE_KEY%" /v Zapret2NextStrategy 2^>nul ^| findstr /I "Zapret2NextStrategy"') do set "CURRENT_PRESET=%%B"
 set "GAME_MODE=off"
 if exist "%ROOT%\utils\game_filter.mode" set /p GAME_MODE=<"%ROOT%\utils\game_filter.mode"
 if exist "%ROOT%\utils\check_updates.enabled" (set "UPDATE_MODE=enabled") else (set "UPDATE_MODE=disabled")
 call :read_ipset_mode
+call :read_voice_mode
 exit /b
+
+:get_service_status
+set "SERVICE_STATUS=not installed"
+for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "$service = Get-Service -Name '%SERVICE_NAME%' -ErrorAction SilentlyContinue; if ($service) { $service.Status.ToString() }" 2^>nul`) do set "SERVICE_STATUS=%%S"
+exit /b
+
+:wait_for_service_status
+set "WAIT_TARGET=%~1"
+set /a WAIT_RETRIES=0
+:wait_for_service_status_loop
+call :get_service_status
+if /I "!SERVICE_STATUS!"=="!WAIT_TARGET!" exit /b 0
+set /a WAIT_RETRIES+=1
+if !WAIT_RETRIES! GEQ 15 (
+  call :red "Service did not reach !WAIT_TARGET! state (current: !SERVICE_STATUS!)."
+  exit /b 1
+)
+timeout /t 1 /nobreak >nul
+goto wait_for_service_status_loop
 
 :read_ipset_mode
 set "IPSET_MODE=loaded"
@@ -85,18 +107,26 @@ if exist "%ROOT%\utils\ipset_filter.mode" set /p IPSET_MODE=<"%ROOT%\utils\ipset
 if /I not "!IPSET_MODE!"=="loaded" if /I not "!IPSET_MODE!"=="none" if /I not "!IPSET_MODE!"=="any" set "IPSET_MODE=loaded"
 exit /b
 
+:read_voice_mode
+set "VOICE_MODE=compatible"
+if exist "%ROOT%\utils\voice_filter.mode" set /p VOICE_MODE=<"%ROOT%\utils\voice_filter.mode"
+if /I not "!VOICE_MODE!"=="compatible" if /I not "!VOICE_MODE!"=="standard" if /I not "!VOICE_MODE!"=="off" set "VOICE_MODE=compatible"
+exit /b
+
 :install_service
 cls
-echo Available presets:
+call :read_status
+echo Available public presets:
 set /a count=0
-for %%F in ("%ROOT%\presets\*.txt.in") do (
-  set "name=%%~nF"
-  set "name=!name:.txt=!"
-  if not "!name:~0,1!"=="_" (
-    set /a count+=1
-    set "preset!count!=!name!"
-    echo   !count!. !name!
+for %%P in ("general" "ALT" "ALT3" "ALT5" "ALT11" "FAKE TLS AUTO ALT2") do (
+  if not exist "%ROOT%\presets\%%~P.txt.in" (
+    call :red "Missing public preset: %%~P"
+    pause
+    goto menu
   )
+  set /a count+=1
+  set "preset!count!=%%~P"
+  echo   !count!. %%~P
 )
 echo.
 set "pick="
@@ -105,6 +135,12 @@ if "%pick%"=="0" goto menu
 for /f "delims=0123456789" %%A in ("%pick%") do goto invalid_choice
 if not defined preset%pick% goto invalid_choice
 set "SELECTED=!preset%pick%!"
+echo.
+echo Selected configuration:
+echo   Strategy: !SELECTED!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!
+set "confirm="
+set /p "confirm=Install this service configuration? [Y/n]: "
+if /I "!confirm!"=="N" goto menu
 set "SERVICE_CONFIG=%ROOT%\runtime\service.txt"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "!SELECTED!" -Output "!SERVICE_CONFIG!"
 if errorlevel 1 (
@@ -126,7 +162,12 @@ if errorlevel 1 (
 sc description "%SERVICE_NAME%" "Zapret 2 NEXT DPI bypass service powered by Zapret 2"
 reg add "%STATE_KEY%" /v Zapret2NextStrategy /t REG_SZ /d "!SELECTED!" /f >nul
 sc start "%SERVICE_NAME%"
-if errorlevel 1 call :yellow "Service was installed but did not start. Run Diagnostics."
+if errorlevel 1 (
+  call :yellow "Service was installed but did not start. See the SC error above and run Diagnostics."
+) else (
+  call :wait_for_service_status Running
+  if errorlevel 1 call :yellow "Service start did not reach Running. Run Diagnostics."
+)
 pause
 goto menu
 
@@ -159,6 +200,8 @@ echo Service state:      !SERVICE_STATUS!
 echo Selected strategy:  !CURRENT_PRESET!
 echo Game filter:        !GAME_MODE!
 echo IPSet filter:       !IPSET_MODE!
+echo Discord Voice:      !VOICE_MODE!
+echo Configuration:      !CURRENT_PRESET! + !GAME_MODE! + !IPSET_MODE! + !VOICE_MODE!
 echo Auto update check:  !UPDATE_MODE!
 tasklist /FI "IMAGENAME eq winws2.exe" 2>nul | findstr /I "winws2.exe" >nul
 if errorlevel 1 (echo winws2 process:     not running) else (echo winws2 process:     running)
@@ -203,6 +246,25 @@ call :refresh_service_config
 pause
 goto menu
 
+:voice_filter
+cls
+echo Select Discord Voice mode:
+echo   0. Off        - protect Discord/STUN from the Game UDP fallback
+echo   1. Standard   - official discovery fake profile
+echo   2. Compatible - preserved confirmed voice sequence
+set "mode="
+set "newmode="
+set /p "mode=Selection (0-2): "
+if "%mode%"=="0" set "newmode=off"
+if "%mode%"=="1" set "newmode=standard"
+if "%mode%"=="2" set "newmode=compatible"
+if not defined newmode goto invalid_choice
+call :read_voice_mode
+>"%ROOT%\utils\voice_filter.mode" echo(!newmode!
+call :green "Discord Voice mode changed: !VOICE_MODE! -^> !newmode!"
+call :refresh_service_config
+pause
+goto menu
 :update_toggle
 if exist "%ROOT%\utils\check_updates.enabled" (
   del /q "%ROOT%\utils\check_updates.enabled"
@@ -285,7 +347,7 @@ netsh interface tcp show global | findstr /I "timestamps enabled" >nul && (call 
 for /f "tokens=3" %%P in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable 2^>nul ^| findstr /I "ProxyEnable"') do if not "%%P"=="0x0" call :yellow "System proxy is enabled"
 for %%S in (KillerNetworkService SmartByteNetworkService TracSrvWrapper) do sc query "%%S" >nul 2>&1 && call :yellow "Potential conflicting service: %%S"
 call :read_status
-echo Service: !SERVICE_STATUS!, preset: !CURRENT_PRESET!, game: !GAME_MODE!, ipset: !IPSET_MODE!
+echo Service: !SERVICE_STATUS!, strategy: !CURRENT_PRESET!, game: !GAME_MODE!, ipset: !IPSET_MODE!, voice: !VOICE_MODE!
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\validate.ps1" -Quick
 echo.
 pause
@@ -297,7 +359,11 @@ goto menu
 
 :refresh_service_config
 sc query "%SERVICE_NAME%" >nul 2>&1
-if errorlevel 1 exit /b 0
+if errorlevel 1 (
+  tasklist /FI "IMAGENAME eq winws2.exe" 2>nul | findstr /I "winws2.exe" >nul
+  if not errorlevel 1 call :yellow "A manual winws2 process is running. Stop it and rerun its general*.bat launcher to apply this change."
+  exit /b 0
+)
 set "ACTIVE="
 for /f "tokens=2,*" %%A in ('reg query "%STATE_KEY%" /v Zapret2NextStrategy 2^>nul ^| findstr /I "Zapret2NextStrategy"') do set "ACTIVE=%%B"
 if not defined ACTIVE (
@@ -312,10 +378,24 @@ if errorlevel 1 (
 set "restart="
 set /p "restart=Restart the service now? [Y/n]: "
 if /I "!restart!"=="N" exit /b 0
-sc stop "%SERVICE_NAME%" >nul 2>&1
-timeout /t 1 /nobreak >nul
-sc start "%SERVICE_NAME%" >nul
-if errorlevel 1 (call :red "Service restart failed.") else call :green "Service restarted."
+call :get_service_status
+if /I "!SERVICE_STATUS!"=="Stopped" goto refresh_start_service
+sc stop "%SERVICE_NAME%"
+if errorlevel 1 (
+  call :red "Service stop command failed. See the SC error above."
+  exit /b 1
+)
+call :wait_for_service_status Stopped
+if errorlevel 1 exit /b 1
+:refresh_start_service
+sc start "%SERVICE_NAME%"
+if errorlevel 1 (
+  call :red "Service start command failed. See the SC error above."
+  exit /b 1
+)
+call :wait_for_service_status Running
+if errorlevel 1 exit /b 1
+call :green "Service restarted."
 exit /b
 
 :repository_ready
