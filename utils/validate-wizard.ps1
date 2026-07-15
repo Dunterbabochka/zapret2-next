@@ -29,9 +29,14 @@ $modules = @(
     (Join-Path $PSScriptRoot 'compatibility-wizard-core.ps1'),
     (Join-Path $PSScriptRoot 'compatibility-wizard-preflight.ps1'),
     (Join-Path $PSScriptRoot 'compatibility-wizard-network.ps1'),
-    (Join-Path $PSScriptRoot 'compatibility-wizard-main.ps1')
+    (Join-Path $PSScriptRoot 'compatibility-wizard-main.ps1'),
+    (Join-Path $PSScriptRoot 'compatibility-wizard-simulation.ps1')
 )
-foreach ($path in @($launcher, $targets, $builder) + $modules) {
+$requiredPaths = @($launcher, $targets) + $modules
+if (Test-Path -LiteralPath $builder -PathType Leaf) {
+    $requiredPaths += $builder
+}
+foreach ($path in $requiredPaths) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { Add-WizardValidationError "Missing Stage 3 file: $path" }
 }
 
@@ -61,9 +66,17 @@ foreach ($required in @(
     'REPORT.txt', 'results.json', 'web-results.csv', 'schemaVersion',
     "@('off', 'standard', 'compatible')", "-GameMode 'off'", "-IPSetMode 'any'",
     "-VoiceMode 'off'", 'final-recheck', 'Stop-ConflictState', 'Restore-ConflictState',
-    'RawEtlIncluded = $false', 'userStatePreserved', 'privacyConsent'
+    'RawEtlIncluded = $false', 'userStatePreserved', 'privacyConsent',
+    'FreshHandshakeObserved', 'StrategyActionObserved'
 )) {
     if ($wizardText -notmatch [regex]::Escape($required)) { Add-WizardValidationError "Wizard contract is missing: $required" }
+}
+if ($wizardText -match '(?m)\$recommendedIPSet\s*=\s*[^\r\n]*\bany\b' -or
+    $wizardText -match '(?i)IPSet any is explicitly recommended') {
+    Add-WizardValidationError 'The Compatibility Wizard must never emit IPSet any as a persistent recommendation.'
+}
+if ($wizardText -notmatch '\$diagnosticIPSet') {
+    Add-WizardValidationError 'The Compatibility Wizard must keep IPSet any in an explicit diagnostic-only variable.'
 }
 foreach ($forbiddenPattern in @(
     ('Invoke-' + 'RestMethod'),

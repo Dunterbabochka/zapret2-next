@@ -1,16 +1,18 @@
+# Experimental only: reserve candidate for difficult DPI.
+# Actions remain scoped to hostlists, Discord media, or the populated IPSet fallback.
 [TCP_HTTP]
---lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=11
 --lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max:tcp_ts_up
 [TCP_TLS]
---lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=11
 --lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max:tcp_ts_up
 [DISCORD_MEDIA_TLS]
---lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=8
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=10
 --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up
 [GOOGLE_TLS]
 --lua-desync=hostfakesplit:host=www.google.com:ip_id=zero:tcp_ts=-1000:tcp_ts_up
 [TCP_GENERIC]
---lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=11
 --lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max:tcp_ts_up
 [QUIC]
 --lua-desync=fake:blob=quic_google:repeats=11

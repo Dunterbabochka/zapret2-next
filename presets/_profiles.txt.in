@@ -20,7 +20,7 @@
 --hostlist-domains=discord.media
 --payload=tls_client_hello
 --out-range=-d10
-{{TCP_TLS}}
+{{DISCORD_MEDIA_TLS}}
 --new
 
 # Google/YouTube TLS
@@ -28,8 +28,11 @@
 --hostlist=../lists/list-google.txt
 --payload=tls_client_hello
 --out-range=-d10
-{{TCP_TLS}}
+{{GOOGLE_TLS}}
 --new
+
+# Discord Web, Gateway, CDN and Updates (CUSTOM presets only)
+{{DISCORD_WEB_PROFILE}}
 
 # General HTTP
 --filter-tcp=80
@@ -68,7 +71,7 @@
 --new
 
 # IPSet fallback TCP
---filter-tcp=80,443
+--filter-tcp={{IPSET_TCP_FILTER}}
 {{IPSET_INCLUDE}}
 --ipset-exclude=../lists/ipset-exclude.txt
 --ipset-exclude=../lists/ipset-exclude-user.txt

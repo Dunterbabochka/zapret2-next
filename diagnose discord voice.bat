@@ -3,12 +3,14 @@ setlocal EnableExtensions
 
 fltmc >nul 2>&1
 if errorlevel 1 (
-  powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c ""%~f0""' -Verb RunAs"
+  powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c ""%~f0"" ""%~1""' -Verb RunAs"
   exit /b
 )
 
 title Zapret 2 NEXT - Discord voice diagnostic
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\discord-voice-diagnostic.ps1"
+set "PRESET=%~1"
+if not defined PRESET set "PRESET=VOICE"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\discord-voice-diagnostic.ps1" -Preset "%PRESET%"
 set "RESULT=%ERRORLEVEL%"
 echo.
 if not "%RESULT%"=="0" (

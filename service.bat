@@ -56,19 +56,19 @@ echo      0. Exit
 echo.
 set "choice="
 set /p "choice=   Select option (0-12): "
-if "%choice%"=="1" goto install_service
-if "%choice%"=="2" goto remove_service
-if "%choice%"=="3" goto show_status
-if "%choice%"=="4" goto game_filter
-if "%choice%"=="5" goto ipset_filter
-if "%choice%"=="6" goto update_toggle
-if "%choice%"=="7" goto update_ipset
-if "%choice%"=="8" goto update_hosts
-if "%choice%"=="9" goto manual_update_check
-if "%choice%"=="10" goto diagnostics
-if "%choice%"=="11" goto tests
-if "%choice%"=="12" goto voice_filter
-if "%choice%"=="0" exit /b 0
+if "!choice!"=="1" goto install_service
+if "!choice!"=="2" goto remove_service
+if "!choice!"=="3" goto show_status
+if "!choice!"=="4" goto game_filter
+if "!choice!"=="5" goto ipset_filter
+if "!choice!"=="6" goto update_toggle
+if "!choice!"=="7" goto update_ipset
+if "!choice!"=="8" goto update_hosts
+if "!choice!"=="9" goto manual_update_check
+if "!choice!"=="10" goto diagnostics
+if "!choice!"=="11" goto tests
+if "!choice!"=="12" goto voice_filter
+if "!choice!"=="0" exit /b 0
 goto menu
 
 :read_status
@@ -116,7 +116,7 @@ exit /b
 :install_service
 cls
 call :read_status
-echo Available public presets:
+echo Available presets:
 set /a count=0
 for %%P in ("general" "ALT" "ALT3" "ALT5" "ALT11" "FAKE TLS AUTO ALT2") do (
   if not exist "%ROOT%\presets\%%~P.txt.in" (
@@ -128,13 +128,28 @@ for %%P in ("general" "ALT" "ALT3" "ALT5" "ALT11" "FAKE TLS AUTO ALT2") do (
   set "preset!count!=%%~P"
   echo   !count!. %%~P
 )
+if exist "%ROOT%\utils\accepted_service_presets.txt" (
+  echo.
+  echo Accepted local experimental presets:
+  for /f "usebackq eol=# delims=" %%P in ("%ROOT%\utils\accepted_service_presets.txt") do (
+    if exist "%ROOT%\presets\%%P.txt.in" (
+      set /a count+=1
+      set "preset!count!=%%P"
+      set "PRESET_LABEL=accepted local"
+      if /I "%%P"=="CUSTOM SAFE" set "PRESET_LABEL=recommended custom"
+      if /I "%%P"=="ALT12" set "PRESET_LABEL=confirmed fallback"
+      if /I "%%P"=="CUSTOM BALANCED" set "PRESET_LABEL=stronger custom"
+      echo   !count!. %%P [!PRESET_LABEL!]
+    )
+  )
+)
 echo.
 set "pick="
 set /p "pick=Select preset (1-!count!, 0=cancel): "
-if "%pick%"=="0" goto menu
-for /f "delims=0123456789" %%A in ("%pick%") do goto invalid_choice
-if not defined preset%pick% goto invalid_choice
-set "SELECTED=!preset%pick%!"
+if "!pick!"=="0" goto menu
+for /f "delims=0123456789" %%A in ("!pick!") do goto invalid_choice
+if not defined preset!pick! goto invalid_choice
+for %%P in (!pick!) do set "SELECTED=!preset%%P!"
 echo.
 echo Selected configuration:
 echo   Strategy: !SELECTED!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!
@@ -142,7 +157,12 @@ set "confirm="
 set /p "confirm=Install this service configuration? [Y/n]: "
 if /I "!confirm!"=="N" goto menu
 set "SERVICE_CONFIG=%ROOT%\runtime\service.txt"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "!SELECTED!" -Output "!SERVICE_CONFIG!"
+set "RENDER_IPSET_MODE=!IPSET_MODE!"
+if /I "!RENDER_IPSET_MODE!"=="any" (
+  set "RENDER_IPSET_MODE=loaded"
+  call :yellow "IPSet any is diagnostic-only; service installation will use loaded."
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "!SELECTED!" -Output "!SERVICE_CONFIG!" -IPSetMode "!RENDER_IPSET_MODE!"
 if errorlevel 1 (
   call :red "Failed to render service config."
   pause
@@ -220,10 +240,10 @@ echo   2. TCP only
 echo   3. UDP only
 set "mode="
 set /p "mode=Selection (0-3): "
-if "%mode%"=="0" set "newmode=off"
-if "%mode%"=="1" set "newmode=all"
-if "%mode%"=="2" set "newmode=tcp"
-if "%mode%"=="3" set "newmode=udp"
+if "!mode!"=="0" set "newmode=off"
+if "!mode!"=="1" set "newmode=all"
+if "!mode!"=="2" set "newmode=tcp"
+if "!mode!"=="3" set "newmode=udp"
 if not defined newmode goto invalid_choice
 >"%ROOT%\utils\game_filter.mode" echo(!newmode!
 call :refresh_service_config
@@ -235,13 +255,12 @@ cls
 call :read_ipset_mode
 if /I "!IPSET_MODE!"=="loaded" (
   set "newmode=none"
-) else if /I "!IPSET_MODE!"=="none" (
-  set "newmode=any"
 ) else (
   set "newmode=loaded"
 )
 >"%ROOT%\utils\ipset_filter.mode" echo(!newmode!
 call :green "IPSet mode changed: !IPSET_MODE! -^> !newmode!"
+call :yellow "IPSet any is diagnostic-only and is not available as a persistent service mode."
 call :refresh_service_config
 pause
 goto menu
@@ -255,9 +274,9 @@ echo   2. Compatible - preserved confirmed voice sequence
 set "mode="
 set "newmode="
 set /p "mode=Selection (0-2): "
-if "%mode%"=="0" set "newmode=off"
-if "%mode%"=="1" set "newmode=standard"
-if "%mode%"=="2" set "newmode=compatible"
+if "!mode!"=="0" set "newmode=off"
+if "!mode!"=="1" set "newmode=standard"
+if "!mode!"=="2" set "newmode=compatible"
 if not defined newmode goto invalid_choice
 call :read_voice_mode
 >"%ROOT%\utils\voice_filter.mode" echo(!newmode!
@@ -370,7 +389,13 @@ if not defined ACTIVE (
   call :yellow "Service exists but its strategy metadata is missing. Reinstall it."
   exit /b 1
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "!ACTIVE!" -Output "%ROOT%\runtime\service.txt"
+call :read_ipset_mode
+set "RENDER_IPSET_MODE=!IPSET_MODE!"
+if /I "!RENDER_IPSET_MODE!"=="any" (
+  set "RENDER_IPSET_MODE=loaded"
+  call :yellow "IPSet any is diagnostic-only; service refresh will use loaded."
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "!ACTIVE!" -Output "%ROOT%\runtime\service.txt" -IPSetMode "!RENDER_IPSET_MODE!"
 if errorlevel 1 (
   call :red "Failed to regenerate service config."
   exit /b 1

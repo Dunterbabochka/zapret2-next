@@ -22,6 +22,7 @@
 --wf-raw-part=@../windivert.filter/windivert_part.quic_initial_ietf.txt
 
 --blob=tls_google:@fake/tls_clienthello_www_google_com.bin
+--blob=tls_max:@fake/tls_clienthello_max_ru.bin
 --blob=quic_google:@fake/quic_initial_www_google_com.bin
 --blob=stun:@fake/stun.bin
 --blob=discord_voice:@fake/quic_initial_dbankcloud_ru.bin

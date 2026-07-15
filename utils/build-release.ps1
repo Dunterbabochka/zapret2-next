@@ -22,10 +22,22 @@ $topFiles = @(
 $dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
 foreach ($dir in $dirs) { Copy-Item (Join-Path $root $dir) (Join-Path $stage $dir) -Recurse -Force }
-Remove-Item (Join-Path $stage 'utils\build-release.ps1') -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $stage 'utils\configure-repository.ps1') -Force -ErrorAction SilentlyContinue
-foreach ($experimentalPreset in @('ALT12.txt.in', 'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in')) {
-    Remove-Item (Join-Path $stage "presets\$experimentalPreset") -Force -ErrorAction Stop
+foreach ($sourceOnlyPath in @(
+    'utils\build-release.ps1',
+    'utils\build-beta-kit.ps1',
+    'utils\aggregate-beta-results.ps1',
+    'utils\configure-repository.ps1',
+    'utils\test-custom-presets.ps1',
+    'utils\accepted_service_presets.txt',
+    'lists\list-discord-web.txt'
+)) {
+    Remove-Item (Join-Path $stage $sourceOnlyPath) -Force -ErrorAction SilentlyContinue
+}
+foreach ($experimentalPreset in @(
+    'ALT12.txt.in', 'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
+    'CUSTOM SAFE.txt.in', 'CUSTOM BALANCED.txt.in', 'CUSTOM AGGRESSIVE.txt.in'
+)) {
+    Remove-Item (Join-Path $stage "presets\$experimentalPreset") -Force -ErrorAction SilentlyContinue
 }
 Compress-Archive -Path $stage -DestinationPath $zip -CompressionLevel Optimal
 $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash

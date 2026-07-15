@@ -1,0 +1,14 @@
+﻿ZAPRET 2 NEXT — BETA TEST
+
+Before starting: close other DPI-bypass tools, VPN/proxy software, and save open work. The wizard requests Administrator rights. It only temporarily stops recorded Zapret state after all checks and your explicit confirmation; it restores state it stopped by default.
+
+1. In the kit root, run START BETA TEST.bat and approve UAC.
+2. Read the privacy notice in the wizard. Stop if you do not consent to diagnostic collection.
+3. Enter the requested tester/provider/region metadata and complete preflight. Manually resolve any blocker, then rerun preflight.
+4. Confirm the temporary test only when the wizard asks. It automatically scans six web presets.
+5. Check Discord Web, the Discord application, and YouTube playback when prompted.
+6. For every voice mode, leave the current Discord channel first and reconnect only after the wizard starts that mode. The wizard accepts the result only when its debug log proves a fresh Discord handshake and an actual strategy call. Record two-way audio, ping, and optionally screen share exactly as prompted.
+7. The wizard repeats the selected exact combination and creates a result ZIP in zapret2-next\runtime\compatibility-results.
+8. Verify that previous Zapret state was restored, then send only that result ZIP to the coordinator.
+
+The normal session takes about 10–15 minutes. A recommendation is not an installed configuration and is not a provider-wide compatibility claim.

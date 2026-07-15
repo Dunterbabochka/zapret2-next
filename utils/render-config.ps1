@@ -88,10 +88,25 @@ function Get-ModeSetting {
 $gameMode = Get-ModeSetting 'GameMode' 'utils\game_filter.mode' 'off' @('off', 'tcp', 'udp', 'all')
 $ipsetMode = Get-ModeSetting 'IPSetMode' 'utils\ipset_filter.mode' 'loaded' @('loaded', 'none', 'any')
 $voiceMode = Get-ModeSetting 'VoiceMode' 'utils\voice_filter.mode' 'compatible' @('compatible', 'standard', 'off')
+$hasPresetCompatibleVoice = $sections.ContainsKey('VOICE_COMPATIBLE') -and $sections['VOICE_COMPATIBLE'].Count -gt 0
+$ipsetTcpPorts = @()
+if ($sections.ContainsKey('IPSET_TCP_PORTS')) {
+    $ipsetTcpPorts = @($sections['IPSET_TCP_PORTS'] |
+        ForEach-Object { ([string]$_).Trim() } |
+        Where-Object { $_ })
+    if (@($ipsetTcpPorts | Where-Object { $_ -notmatch '^\d+(?:-\d+)?$' }).Count -gt 0) {
+        throw "Invalid [IPSET_TCP_PORTS] value in $presetPath"
+    }
+}
+$ipsetTcpFilter = if ($ipsetTcpPorts.Count -gt 0) {
+    '80,443,' + ($ipsetTcpPorts -join ',')
+} else {
+    '80,443'
+}
 
 $gameTcp = if ($gameMode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
 $gameUdp = if ($gameMode -in @('udp', 'all')) { '1024-65535' } else { '12' }
-$wfUdp = if ($voiceMode -eq 'compatible' -or $gameMode -in @('udp', 'all')) {
+$wfUdp = if ($gameMode -in @('udp', 'all') -or ($voiceMode -eq 'compatible' -and -not $hasPresetCompatibleVoice)) {
     '1024-65535'
 } else {
     "443,19294-19344,50000-50100,$gameUdp"
@@ -105,8 +120,43 @@ foreach ($name in $required) {
     $value = ($sections[$name] -join "`r`n").Trim()
     $content = $content.Replace("{{$name}}", $value)
 }
+$googleTls = if ($sections.ContainsKey('GOOGLE_TLS') -and $sections['GOOGLE_TLS'].Count -gt 0) {
+    ($sections['GOOGLE_TLS'] -join [Environment]::NewLine).Trim()
+} else {
+    ($sections['TCP_TLS'] -join [Environment]::NewLine).Trim()
+}
+$discordWebTls = if ($sections.ContainsKey('DISCORD_WEB_TLS') -and $sections['DISCORD_WEB_TLS'].Count -gt 0) {
+    ($sections['DISCORD_WEB_TLS'] -join [Environment]::NewLine).Trim()
+} else {
+    ($sections['TCP_TLS'] -join [Environment]::NewLine).Trim()
+}
+$discordWebProfile = if ($Preset -match '^CUSTOM (SAFE|BALANCED|AGGRESSIVE)$') {
+    @(
+        '--filter-tcp=443'
+        '--hostlist=../lists/list-discord-web.txt'
+        '--payload=tls_client_hello'
+        '--out-range=-d10'
+        $discordWebTls
+        '--new'
+    ) -join "`r`n"
+} else {
+    ''
+}
+$discordMediaTls = if ($sections.ContainsKey('DISCORD_MEDIA_TLS') -and $sections['DISCORD_MEDIA_TLS'].Count -gt 0) {
+    ($sections['DISCORD_MEDIA_TLS'] -join [Environment]::NewLine).Trim()
+} else {
+    ($sections['TCP_TLS'] -join [Environment]::NewLine).Trim()
+}
+$content = $content.Replace('{{DISCORD_MEDIA_TLS}}', $discordMediaTls)
+$content = $content.Replace('{{GOOGLE_TLS}}', $googleTls)
+$content = $content.Replace('{{DISCORD_WEB_TLS}}', $discordWebTls)
+$content = $content.Replace('{{DISCORD_WEB_PROFILE}}', $discordWebProfile)
+$content = $content.Replace('{{IPSET_TCP_FILTER}}', $ipsetTcpFilter)
 $voiceUdpProfile = switch ($voiceMode) {
     'compatible' {
+        if ($hasPresetCompatibleVoice) {
+            ($sections['VOICE_COMPATIBLE'] -join [Environment]::NewLine).Trim()
+        } else {
         @(
             '--filter-udp=1024-65535'
             '--filter-l7=stun,discord'
@@ -116,6 +166,7 @@ $voiceUdpProfile = switch ($voiceMode) {
             '--out-range=n2-n4'
             '--lua-desync=fake:blob=discord_voice:repeats=10'
         ) -join "`r`n"
+        }
     }
     'standard' {
         @(
@@ -134,8 +185,12 @@ $voiceUdpProfile = switch ($voiceMode) {
 }
 $content = $content.Replace('{{VOICE_UDP_PROFILE}}', $voiceUdpProfile)
 
+$loadedIPSetPath = Join-Path $root 'lists\ipset-all.txt'
+$loadedIPSetHasEntries = (Test-Path -LiteralPath $loadedIPSetPath -PathType Leaf) -and
+    @((Get-Content -LiteralPath $loadedIPSetPath) | Where-Object { $_ -notmatch '^\s*(?:#|$)' }).Count -gt 0
+$loadedIPSetSource = if ($loadedIPSetHasEntries) { '../lists/ipset-all.txt' } else { '../lists/ipset-none.txt' }
 $ipsetInclude = switch ($ipsetMode) {
-    'loaded' { '--ipset=../lists/ipset-all.txt' }
+    'loaded' { "--ipset=$loadedIPSetSource" }
     'none' { '--ipset=../lists/ipset-none.txt' }
     'any' { '' }
 }

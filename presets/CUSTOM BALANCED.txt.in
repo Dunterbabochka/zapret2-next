@@ -1,0 +1,28 @@
+# Experimental only: targeted daily candidate.
+# General actions are the moderate native Zapret 2 translation; Discord voice is isolated.
+[TCP_HTTP]
+--lua-desync=fake:blob=http_iana:tcp_ts=-1000:repeats=6
+--lua-desync=multisplit:pos=2,host+1,host+4:seqovl=8:seqovl_pattern=zero:tcp_ts_up
+[TCP_TLS]
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=6
+--lua-desync=multisplit:pos=2,sniext+1,midsld:seqovl=8:seqovl_pattern=zero:tcp_ts_up
+[DISCORD_MEDIA_TLS]
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=8
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up
+[GOOGLE_TLS]
+--lua-desync=hostfakesplit:host=www.google.com:ip_id=zero:tcp_ts=-1000:tcp_ts_up
+[TCP_GENERIC]
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=4
+--lua-desync=multisplit:pos=2:seqovl=8:seqovl_pattern=zero:tcp_ts_up
+[QUIC]
+--lua-desync=fake:blob=quic_google:repeats=8
+[IPSET_TCP_PORTS]
+8443
+[VOICE_COMPATIBLE]
+--filter-udp=19294-19344,50000-50100
+--filter-l7=discord,stun
+--payload=discord_ip_discovery
+--lua-desync=fake:blob=stun:repeats=3
+--lua-desync=fake:blob=discord_voice:repeats=3
+--payload=stun
+--lua-desync=fake:blob=discord_voice:repeats=3

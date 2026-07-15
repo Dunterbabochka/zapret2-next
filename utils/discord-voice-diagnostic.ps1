@@ -4,13 +4,18 @@ param(
     [string]$Preset = 'VOICE',
 
     [ValidateRange(15, 180)]
-    [int]$DurationSeconds = 45
+    [int]$DurationSeconds = 45,
+
+    [switch]$AllowEmptyIPSet,
+
+    [switch]$AllowContaminatedNetwork
 )
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $renderer = Join-Path $PSScriptRoot 'render-config.ps1'
 $winws = Join-Path $root 'bin\winws2.exe'
+$ipsetPath = Join-Path $root 'lists\ipset-all.txt'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $resultDir = Join-Path $root "runtime\voice-diagnostic-$stamp"
 $configPath = Join-Path $resultDir 'VOICE-debug.txt'
@@ -34,9 +39,88 @@ $localPorts = [Collections.Generic.HashSet[int]]::new()
 $pktmonStarted = $false
 $pktmonFilterOwned = $false
 $winwsProcess = $null
+$pingMs = $null
+$heardOtherParticipant = $false
+$otherParticipantHeardTester = $false
+$screenShare = 'not-tested'
+$freshHandshakeObserved = $false
+$strategyActionObserved = $false
+$twoWayAudioConfirmed = $false
+$rawTwoWayAudioObserved = $false
+$networkContaminated = $false
+$networkContaminationReasons = @()
+$ipsetEntryCount = if (Test-Path -LiteralPath $ipsetPath -PathType Leaf) {
+    @((Get-Content -LiteralPath $ipsetPath) | Where-Object { $_ -notmatch '^\s*(?:#|$)' }).Count
+} else {
+    0
+}
+
+function Get-NetworkContaminationReasons {
+    $reasons = [Collections.Generic.List[string]]::new()
+    foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy')) {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            [void]$reasons.Add(('Environment proxy is set: {0}' -f $name))
+        }
+    }
+    try {
+        $inet = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+        if ([int]$inet.ProxyEnable -eq 1 -and -not [string]::IsNullOrWhiteSpace($inet.ProxyServer)) {
+            [void]$reasons.Add(('WinINET proxy is enabled: {0}' -f $inet.ProxyServer))
+        }
+        if (-not [string]::IsNullOrWhiteSpace($inet.AutoConfigURL)) {
+            [void]$reasons.Add('WinINET proxy auto-configuration URL is set')
+        }
+    } catch {
+        Write-Warning 'Could not read WinINET proxy state; this source was not used to mark contamination.'
+    }
+    try {
+        $winHttp = (& netsh winhttp show proxy 2>&1 | Out-String).Trim()
+        if ($winHttp -match '(?i)direct access|no proxy|\u043f\u0440\u044f\u043c\u043e\u0439\s+\u0434\u043e\u0441\u0442\u0443\u043f|\u0431\u0435\u0437\s+\u043f\u0440\u043e\u043a\u0441\u0438') {
+            # Locale-independent direct-access result (English or Russian).
+        } elseif ($winHttp -match '(?i)proxy|\u043f\u0440\u043e\u043a\u0441\u0438|socks|https?://|\b(?:\d{1,3}\.){3}\d{1,3}:\d+\b') {
+            [void]$reasons.Add('WinHTTP reports a configured proxy')
+        } else {
+            Write-Warning 'Could not determine WinHTTP proxy state from localized netsh output; this source was not used to mark contamination.'
+        }
+    } catch {
+        Write-Warning 'Could not read WinHTTP proxy state; this source was not used to mark contamination.'
+    }
+    try {
+        foreach ($adapter in @(Get-NetAdapter -ErrorAction Stop | Where-Object {
+            $_.Status -eq 'Up' -and
+            $_.Name -notmatch '(?i)tailscale|hyper-v|wsl|loopback' -and
+            ($_.Name -match '(?i)vpn|tun|warp|clash|wireguard|openvpn|proton|outline|sing-box|v2ray' -or
+             $_.InterfaceDescription -match '(?i)vpn|tun|warp|clash|wireguard|openvpn|proton|outline|sing-box|v2ray')
+        })) {
+            [void]$reasons.Add(('Suspicious active adapter: {0}' -f $adapter.Name))
+        }
+    } catch {
+        Write-Warning 'Could not inspect active adapters; adapter-based VPN/TUN detection was skipped.'
+    }
+    return @($reasons)
+}
 
 function Add-Report([string]$Line = '') {
     $script:report.Add($Line)
+}
+
+function Read-DiagnosticYesNo([string]$Prompt) {
+    while ($true) {
+        $value = (Read-Host "$Prompt [y/n]").Trim().ToLowerInvariant()
+        if ($value -in @('y', 'yes')) { return $true }
+        if ($value -in @('n', 'no', '')) { return $false }
+        Write-Host 'Enter y or n.' -ForegroundColor Yellow
+    }
+}
+
+function Read-DiagnosticPing {
+    while ($true) {
+        $value = (Read-Host 'Discord voice ping in ms (number or unknown)').Trim().ToLowerInvariant()
+        if ($value -in @('', 'unknown', 'n/a')) { return $null }
+        if ($value -match '^\d{1,5}$') { return [int]$value }
+        Write-Host 'Enter a number or unknown.' -ForegroundColor Yellow
+    }
 }
 
 function Stop-OwnedResources {
@@ -72,6 +156,14 @@ try {
             throw "Required file is missing: $path"
         }
     }
+    if ($ipsetEntryCount -eq 0 -and -not $AllowEmptyIPSet) {
+        throw 'IPSet=loaded voice acceptance requires a populated lists\ipset-all.txt. Update the list first; -AllowEmptyIPSet is diagnostic-only.'
+    }
+    $networkContaminationReasons = @(Get-NetworkContaminationReasons)
+    $networkContaminated = $networkContaminationReasons.Count -gt 0
+    if ($networkContaminated) {
+        Write-Warning ('Proxy/VPN/TUN contamination detected: {0}. Continuing diagnostic; this run cannot be acceptance evidence.' -f ($networkContaminationReasons -join '; '))
+    }
 
     $service = Get-Service -Name winws2 -ErrorAction SilentlyContinue
     if ($null -ne $service -and $service.Status -ne 'Stopped') {
@@ -93,13 +185,11 @@ try {
 
     $oldWinws = @(Get-Process -Name winws2 -ErrorAction SilentlyContinue)
     if ($oldWinws.Count -gt 0) {
-        Write-Host 'Stopping the existing manual winws2 instance...' -ForegroundColor Yellow
-        $oldWinws | Stop-Process -Force
-        Start-Sleep -Seconds 1
+        throw 'A manual winws2 instance is already running. Stop it explicitly before this diagnostic; its state will not be changed automatically.'
     }
 
     New-Item -ItemType Directory -Force -Path $resultDir | Out-Null
-    & $renderer -Preset $Preset -Output $configPath -VoiceMode compatible -DebugLog $debugLog | Out-Null
+    & $renderer -Preset $Preset -Output $configPath -GameMode off -IPSetMode loaded -VoiceMode compatible -DebugLog $debugLog | Out-Null
 
     Write-Host ''
     Write-Host "Starting winws2 with preset $Preset and debug logging..." -ForegroundColor Cyan
@@ -163,6 +253,14 @@ try {
     }
     Write-Progress -Activity 'Discord voice diagnostic' -Completed
 
+    Write-Host ''
+    Write-Host 'Manual voice confirmation' -ForegroundColor Cyan
+    Write-Host 'Keep the fresh Discord call active while answering these questions.' -ForegroundColor Yellow
+    $pingMs = Read-DiagnosticPing
+    $heardOtherParticipant = Read-DiagnosticYesNo 'Could you hear the other participant?'
+    $otherParticipantHeardTester = Read-DiagnosticYesNo 'Could the other participant hear you?'
+    $screenShare = if (Read-DiagnosticYesNo 'Did screen share work?') { 'yes' } else { 'no' }
+
     & pktmon counters 2>&1 | Out-File -LiteralPath $counterText -Encoding utf8
     & pktmon stop 2>&1 | Out-Null
     $pktmonStarted = $false
@@ -198,6 +296,24 @@ try {
     } else {
         ''
     }
+    $voiceProfileIds = @(
+        [regex]::Matches($debugText, 'profile\s+(\d+).*payload_type=.*(?:discord_ip_discovery|stun)') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Sort-Object -Unique
+    )
+    foreach ($profileId in $voiceProfileIds) {
+        $profileMatched = $debugText -match ('desync profile ' + [regex]::Escape($profileId) + ' \((?!no_action\))[^)]*\) matches')
+        if ($profileMatched) {
+            $freshHandshakeObserved = $true
+            if ($debugText -match ("\* lua 'fake_" + [regex]::Escape($profileId) + '_')) {
+                $strategyActionObserved = $true
+            }
+        }
+    }
+    $rawTwoWayAudioObserved = $heardOtherParticipant -and $otherParticipantHeardTester -and
+        $freshHandshakeObserved -and $strategyActionObserved
+    $acceptanceEligible = $ipsetEntryCount -gt 0 -and -not $networkContaminated
+    $twoWayAudioConfirmed = $rawTwoWayAudioObserved -and $acceptanceEligible
     $interestingDebug = @()
     if ($debugText) {
         $interestingDebug = @($debugText -split "`r?`n" | Where-Object {
@@ -218,6 +334,10 @@ try {
     Add-Report "Preset: $Preset"
     Add-Report "Capture seconds: $DurationSeconds"
     Add-Report "OS: $([Environment]::OSVersion.VersionString)"
+    Add-Report "LoadedIPSetEntries: $ipsetEntryCount"
+    Add-Report "NetworkContaminated: $networkContaminated"
+    Add-Report "AcceptanceEligible: $acceptanceEligible"
+    foreach ($reason in $networkContaminationReasons) { Add-Report "CONTAMINATION: $reason" }
     Add-Report ''
     Add-Report 'Discord process and socket observations'
     Add-Report "Observed Discord PIDs: $(@($discordPids | Sort-Object) -join ', ')"
@@ -239,6 +359,16 @@ try {
     Add-Report "matching profile messages: $([regex]::Matches($debugText, 'desync profile [0-9]+ .* matches').Count)"
     Add-Report "profile-not-found messages: $([regex]::Matches($debugText, 'desync profile not found|matching desync profile not found').Count)"
     Add-Report ''
+    Add-Report 'Manual voice confirmation'
+    Add-Report "PingMs: $(if ($null -eq $pingMs) { 'unknown' } else { $pingMs })"
+    Add-Report "HeardOtherParticipant: $heardOtherParticipant"
+    Add-Report "OtherParticipantHeardTester: $otherParticipantHeardTester"
+    Add-Report "ScreenShare: $screenShare"
+    Add-Report "FreshHandshakeObserved: $freshHandshakeObserved"
+    Add-Report "StrategyActionObserved: $strategyActionObserved"
+    Add-Report "RawTwoWayAudioObserved: $rawTwoWayAudioObserved"
+    Add-Report "TwoWayAudioConfirmed: $twoWayAudioConfirmed"
+    Add-Report ''
     Add-Report 'Files to inspect'
     Add-Report 'winws2-debug-relevant.log - profile and protocol decisions'
     Add-Report 'packets-discord-ports.txt - packet headers for Discord-owned local UDP ports'
@@ -257,10 +387,14 @@ try {
     Compress-Archive -LiteralPath $zipFiles -DestinationPath $zipPath -CompressionLevel Optimal
 
     Write-Host ''
-    Write-Host 'Diagnostic completed.' -ForegroundColor Green
+    if ($twoWayAudioConfirmed) {
+        Write-Host ('Diagnostic completed: {0} voice evidence is confirmed.' -f $Preset) -ForegroundColor Green
+    } else {
+        Write-Host ('Diagnostic completed, but {0} voice evidence is NOT confirmed.' -f $Preset) -ForegroundColor Red
+    }
     Write-Host "Attach this ZIP: $zipPath" -ForegroundColor Cyan
     Write-Host 'The diagnostic winws2 instance has been stopped.' -ForegroundColor Yellow
-    exit 0
+    if ($twoWayAudioConfirmed) { exit 0 } else { exit 2 }
 } catch {
     Write-Host ''
     Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red

@@ -172,20 +172,50 @@ function Invoke-VoiceManualTest {
 
     $observations = @()
     $pktmonArtifact = $null
+    $engineRun = $null
+    $freshHandshakeObserved = $false
+    $strategyActionObserved = $null
+
+    Write-Host ''
+    Write-Host "Preparing voice check: $VoiceMode" -ForegroundColor Cyan
+    Write-Host 'Leave the current Discord voice channel before this mode starts.' -ForegroundColor Yellow
+    $disconnected = (Read-Host 'Press Enter only after Discord shows that you are disconnected, or q to cancel').Trim().ToLowerInvariant()
+    if ($disconnected -in @('q', 'quit', 'cancel')) { Stop-Wizard "Canceled before $VoiceMode voice test." }
+
     try {
-        Start-WizardEngine -Preset $Preset -IPSetMode $IPSetMode -VoiceMode $VoiceMode -Tag "$Phase-$Preset-$IPSetMode-$VoiceMode" | Out-Null
+        $engineRun = Start-WizardEngine -Preset $Preset -IPSetMode $IPSetMode -VoiceMode $VoiceMode -Tag "$Phase-$Preset-$IPSetMode-$VoiceMode"
         Start-PktMonCapture "$Phase-$VoiceMode" | Out-Null
         Write-Host ''
         Write-Host "Voice check: $VoiceMode" -ForegroundColor Cyan
-        Write-Host 'Join a Discord voice channel with another participant and keep the call active.' -ForegroundColor Yellow
-        $ready = (Read-Host 'Press Enter after the call is connected, or q to cancel').Trim().ToLowerInvariant()
-        if ($ready -in @('q', 'quit', 'cancel')) { Stop-Wizard "Canceled during $VoiceMode voice test." }
-        $observations += @(Get-DiscordNetworkObservations $Phase $VoiceMode)
+        for ($connectionAttempt = 1; $connectionAttempt -le 2; $connectionAttempt++) {
+            Write-Host 'Join the voice channel now so this mode sees a fresh Discord handshake.' -ForegroundColor Yellow
+            $ready = (Read-Host 'Press Enter after the new call is connected, or q to cancel').Trim().ToLowerInvariant()
+            if ($ready -in @('q', 'quit', 'cancel')) { Stop-Wizard "Canceled during $VoiceMode voice test." }
+            $observations += @(Get-DiscordNetworkObservations $Phase $VoiceMode)
+
+            $debugText = if ($engineRun -and (Test-Path -LiteralPath $engineRun.DebugLog -PathType Leaf)) {
+                Get-Content -LiteralPath $engineRun.DebugLog -Raw -ErrorAction SilentlyContinue
+            } else { '' }
+            $freshHandshakeObserved = $debugText -match 'packet contains (?:discord_ip_discovery|stun) payload'
+            $strategyActionObserved = if ($VoiceMode -eq 'off') { $null } else { $debugText -match "\* lua 'fake_[^']+'" }
+            if ($freshHandshakeObserved -and ($VoiceMode -eq 'off' -or $strategyActionObserved)) { break }
+
+            Write-Warning 'The debug log did not prove that this mode saw a fresh Discord handshake and executed its strategy.'
+            if ($connectionAttempt -ge 2) {
+                throw "Voice mode $VoiceMode was not exercised on a fresh Discord connection."
+            }
+            $retry = (Read-Host 'Leave the channel again, then press Enter to retry this mode, or q to cancel').Trim().ToLowerInvariant()
+            if ($retry -in @('q', 'quit', 'cancel')) { Stop-Wizard "Canceled while retrying $VoiceMode voice test." }
+        }
+
         $ping = Read-PingValue
         $heardOther = Read-YesNo 'Could you hear the other participant?' 'No'
         $otherHeard = Read-YesNo 'Could the other participant hear you?' 'No'
         $screenShare = Read-ThreeWay 'Did screen share work?'
         $observations += @(Get-DiscordNetworkObservations $Phase $VoiceMode)
+        Write-Host 'Leave the Discord voice channel now. The next mode must create a new connection.' -ForegroundColor Yellow
+        $left = (Read-Host 'Press Enter after Discord shows that you are disconnected, or q to cancel').Trim().ToLowerInvariant()
+        if ($left -in @('q', 'quit', 'cancel')) { Stop-Wizard "Canceled while disconnecting after $VoiceMode voice test." }
         $ports = @($observations | Where-Object Protocol -eq 'UDP' | ForEach-Object { [int]$_.LocalPort } | Sort-Object -Unique)
         $pktmonArtifact = Stop-PktMonCapture -DiscordLocalPorts $ports
         $script:result.networkObservations += $observations
@@ -200,7 +230,9 @@ function Invoke-VoiceManualTest {
             PingMs = $ping
             HeardOtherParticipant = $heardOther
             OtherParticipantHeardTester = $otherHeard
-            TwoWayAudio = ($heardOther -and $otherHeard)
+            FreshHandshakeObserved = $freshHandshakeObserved
+            StrategyActionObserved = $strategyActionObserved
+            TwoWayAudio = ($heardOther -and $otherHeard -and $freshHandshakeObserved -and ($VoiceMode -eq 'off' -or $strategyActionObserved))
             ScreenShare = $screenShare
             PktMon = $pktmonArtifact
         }
@@ -218,15 +250,25 @@ function Invoke-FinalManualRecheck {
 
     $observations = @()
     $pktmonArtifact = $null
+    $engineRun = $null
+    $freshHandshakeObserved = $false
+    $strategyActionObserved = $null
     try {
-        Start-WizardEngine -Preset $Preset -IPSetMode $IPSetMode -VoiceMode $VoiceMode -Tag "final-manual-$Preset-$IPSetMode-$VoiceMode" | Out-Null
+        $engineRun = Start-WizardEngine -Preset $Preset -IPSetMode $IPSetMode -VoiceMode $VoiceMode -Tag "final-manual-$Preset-$IPSetMode-$VoiceMode"
         Start-PktMonCapture 'final-combination' | Out-Null
         Write-Host ''
         Write-Host 'Final exact-combination recheck' -ForegroundColor Cyan
         Write-Host "Web=$Preset | Voice=$VoiceMode | Game=off | IPSet=$IPSetMode" -ForegroundColor Green
+        if ($VoiceWasConfirmed) { Write-Host 'Leave any current call, then join a fresh Discord call for this final check.' -ForegroundColor Yellow }
         $ready = (Read-Host 'Repeat the Discord/YouTube/call checks, then press Enter (q = cancel)').Trim().ToLowerInvariant()
         if ($ready -in @('q', 'quit', 'cancel')) { Stop-Wizard 'Canceled during final exact-combination recheck.' }
         $observations += @(Get-DiscordNetworkObservations 'final-manual' $VoiceMode)
+        if ($VoiceWasConfirmed) {
+            $debugText = if ($engineRun -and (Test-Path -LiteralPath $engineRun.DebugLog -PathType Leaf)) { Get-Content -LiteralPath $engineRun.DebugLog -Raw -ErrorAction SilentlyContinue } else { '' }
+            $freshHandshakeObserved = $debugText -match 'packet contains (?:discord_ip_discovery|stun) payload'
+            $strategyActionObserved = $debugText -match "\* lua 'fake_[^']+'"
+            if (-not $freshHandshakeObserved -or -not $strategyActionObserved) { throw 'Final voice recheck did not prove a fresh Discord handshake and strategy action.' }
+        }
         $discordWeb = Read-YesNo 'Final check: did Discord Web work?' 'No'
         $discordApp = Read-YesNo 'Final check: did the Discord app work?' 'No'
         $youtube = Read-YesNo 'Final check: did YouTube playback work?' 'No'
@@ -235,6 +277,10 @@ function Invoke-FinalManualRecheck {
         $otherHeard = if ($VoiceWasConfirmed) { Read-YesNo 'Final check: could the other participant hear you?' 'No' } else { $false }
         $screenShare = if ($VoiceWasConfirmed) { Read-ThreeWay 'Final check: did screen share work?' } else { 'not-tested' }
         $observations += @(Get-DiscordNetworkObservations 'final-manual' $VoiceMode)
+        if ($VoiceWasConfirmed) {
+            $left = (Read-Host 'Leave the Discord voice channel and press Enter when disconnected, or q to cancel').Trim().ToLowerInvariant()
+            if ($left -in @('q', 'quit', 'cancel')) { Stop-Wizard 'Canceled while disconnecting after final recheck.' }
+        }
         $ports = @($observations | Where-Object Protocol -eq 'UDP' | ForEach-Object { [int]$_.LocalPort } | Sort-Object -Unique)
         $pktmonArtifact = Stop-PktMonCapture -DiscordLocalPorts $ports
         $script:result.networkObservations += $observations
@@ -251,7 +297,9 @@ function Invoke-FinalManualRecheck {
             PingMs = $ping
             HeardOtherParticipant = $heardOther
             OtherParticipantHeardTester = $otherHeard
-            TwoWayAudio = ($heardOther -and $otherHeard)
+            FreshHandshakeObserved = $freshHandshakeObserved
+            StrategyActionObserved = $strategyActionObserved
+            TwoWayAudio = ($heardOther -and $otherHeard -and $freshHandshakeObserved -and ($VoiceMode -eq 'off' -or $strategyActionObserved))
             ScreenShare = $screenShare
             PktMon = $pktmonArtifact
         }
@@ -336,22 +384,25 @@ function Invoke-CompatibilityWizard {
         $loadedRows = @(Invoke-WebPass -Preset $selectedPreset -Pass 1 -IPSetMode 'loaded' -VoiceMode 'off' -Phase 'ipset-loaded')
         $loadedMandatoryOk = @($loadedRows | Where-Object { $_.Mandatory -and -not $_.Success }).Count -eq 0
         $anyMandatoryOk = $candidate.MandatoryRunRate -gt 0
-        $recommendedIPSet = if ($loadedMandatoryOk) { 'loaded' } else { 'any' }
+        # IPSet=any is permitted for discovery only. Never emit it as a
+        # persistent recommendation or use it for the final exact recheck.
+        $diagnosticIPSet = if ($loadedMandatoryOk) { 'loaded' } else { 'any' }
+        $recommendedIPSet = 'loaded'
         $ipsetNote = if ($loadedMandatoryOk) {
             'The selected preset passed its mandatory endpoint check with IPSet loaded.'
         } elseif ($anyMandatoryOk) {
-            'IPSet loaded failed while IPSet any had a complete mandatory pass; IPSet any is explicitly recommended.'
+            'IPSet loaded failed while IPSet any was useful for diagnostic discovery. IPSet any is not a persistent recommendation; the result remains unconfirmed until loaded passes.'
         } else {
-            'Neither loaded nor any produced a fully reliable mandatory endpoint result; the suggestion is unconfirmed.'
+            'Neither loaded nor diagnostic IPSet any produced a fully reliable mandatory endpoint result; the suggestion is unconfirmed.'
         }
         Write-Host $ipsetNote -ForegroundColor $(if ($loadedMandatoryOk) { 'Green' } else { 'Yellow' })
 
-        $webManual = Invoke-ManualWebConfirmation -Preset $selectedPreset -IPSetMode $recommendedIPSet
+        $webManual = Invoke-ManualWebConfirmation -Preset $selectedPreset -IPSetMode $diagnosticIPSet
         $script:result.manualResults += $webManual
 
         $selectedVoice = $null
         foreach ($voiceMode in @('off', 'standard', 'compatible')) {
-            $voiceResult = Invoke-VoiceManualTest -Preset $selectedPreset -IPSetMode $recommendedIPSet -VoiceMode $voiceMode
+            $voiceResult = Invoke-VoiceManualTest -Preset $selectedPreset -IPSetMode $diagnosticIPSet -VoiceMode $voiceMode
             $script:result.manualResults += $voiceResult
             if ($voiceResult.TwoWayAudio) { $selectedVoice = $voiceMode; break }
         }
@@ -359,9 +410,9 @@ function Invoke-CompatibilityWizard {
 
         Write-Host ''
         Write-Host 'Stage 4/4: repeat the exact final combination before report creation' -ForegroundColor Cyan
-        $finalAutomatic = @(Invoke-WebPass -Preset $selectedPreset -Pass 1 -IPSetMode $recommendedIPSet -VoiceMode $finalVoiceMode -Phase 'final-recheck')
+        $finalAutomatic = @(Invoke-WebPass -Preset $selectedPreset -Pass 1 -IPSetMode 'loaded' -VoiceMode $finalVoiceMode -Phase 'final-recheck')
         $finalAutomaticOk = @($finalAutomatic | Where-Object { $_.Mandatory -and -not $_.Success }).Count -eq 0
-        $finalManual = Invoke-FinalManualRecheck -Preset $selectedPreset -IPSetMode $recommendedIPSet -VoiceMode $finalVoiceMode -VoiceWasConfirmed ($null -ne $selectedVoice)
+        $finalManual = Invoke-FinalManualRecheck -Preset $selectedPreset -IPSetMode 'loaded' -VoiceMode $finalVoiceMode -VoiceWasConfirmed ($null -ne $selectedVoice)
         $script:result.manualResults += $finalManual
 
         $manualWebOk = $webManual.DiscordWeb -and $webManual.DiscordApp -and $webManual.YouTubePlayback

@@ -1,0 +1,27 @@
+# Experimental only: targeted, low-intervention candidate.
+# Keep Game=off and use IPSet=loaded only after the list has been populated.
+[TCP_HTTP]
+--lua-desync=fake:blob=http_iana:tcp_ts=-1000:repeats=3
+--lua-desync=multisplit:pos=2:seqovl=1:seqovl_pattern=zero:tcp_ts_up
+[TCP_TLS]
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=3
+--lua-desync=multisplit:pos=2,midsld:seqovl=1:seqovl_pattern=zero:tcp_ts_up
+[DISCORD_MEDIA_TLS]
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=4
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up
+[GOOGLE_TLS]
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=3
+--lua-desync=multisplit:pos=2,midsld:seqovl=1:seqovl_pattern=zero:tcp_ts_up
+[TCP_GENERIC]
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=2
+--lua-desync=multisplit:pos=2:seqovl=1:seqovl_pattern=zero:tcp_ts_up
+[QUIC]
+--lua-desync=fake:blob=quic_google:repeats=4
+[VOICE_COMPATIBLE]
+--filter-udp=19294-19344,50000-50100
+--filter-l7=discord,stun
+--payload=discord_ip_discovery
+--lua-desync=fake:blob=stun:repeats=3
+--lua-desync=fake:blob=discord_voice:repeats=3
+--payload=stun
+--lua-desync=fake:blob=discord_voice:repeats=3

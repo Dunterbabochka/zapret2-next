@@ -1,0 +1,10 @@
+﻿КОМУ ОТДАВАТЬ BETA-АРХИВ
+
+1. Соберите beta-kit скриптом utils\build-beta-kit.ps1. Перед распространением сверяйте SHA256 архива с одноимённым .sha256-файлом.
+2. Всем тестерам выдаётся только один и тот же проверенный zapret2-next-beta-kit-<version>.zip. Не пересобирайте и не меняйте архив для отдельных людей.
+3. Попросите тестера прислать итоговый ZIP из runtime\compatibility-results без распаковки и без переименования его содержимого.
+4. Сложите полученные ZIP в одну папку и выполните из zapret2-next:
+   powershell -ExecutionPolicy Bypass -File utils\aggregate-beta-results.ps1 -InputDirectory "C:\path\to\reports"
+5. В runtime\beta-summary появятся accepted-results.csv, rejected-results.csv, summary.json и SUMMARY.txt. Неполные, повреждённые и несовместимые отчёты не включаются; запросите у тестера новый исходный ZIP.
+
+Отчёты содержат личные технические данные, перечисленные в BETA_PRIVACY_RU.txt. Храните их ограниченно и не публикуйте без согласия тестера.
