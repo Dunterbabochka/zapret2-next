@@ -5,3 +5,51 @@ dist/
 *.tmp
 *.download
 lists/ipset-all.txt.backup
+
+# Рабочие и диагностические данные
+runtime/*
+!runtime/.gitkeep
+Results/
+
+# Сборки
+dist/*
+!dist/.gitkeep
+
+# Пользовательские списки
+lists/list-general-user.txt
+lists/list-exclude-user.txt
+lists/ipset-exclude-user.txt
+
+# Локальное состояние
+utils/game_filter.mode
+utils/ipset_filter.mode
+utils/voice_filter.mode
+utils/check_updates.enabled
+
+# Логи, дампы и архивы
+*.log
+*.etl
+*.zip
+
+# Временные и резервные файлы
+*.backup
+*.bak
+*.tmp
+*.old
+*.orig
+*.swp
+*.download
+
+# Секреты
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+secrets.yaml
+
+# IDE и ОС
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,4 +1,5 @@
-# Accepted on the current owner network; keep experimental until the second-network check.
+# Published opt-in experimental presets confirmed on the owner network.
+# They remain outside Compatibility Wizard and are not universal recommendations.
 CUSTOM SAFE
 ALT12
 CUSTOM BALANCED

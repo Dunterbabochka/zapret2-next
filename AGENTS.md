@@ -11,3 +11,14 @@
 - Run `utils/validate-runtime.ps1` as Administrator after strategy or runtime changes.
 - Do not claim a strategy works for a provider unless a recorded test supports the claim.
 - Do not edit the three source snapshot directories.
+
+## Staged implementation workflow
+
+- At the start of every stage, read `docs/ROADMAP.md` and `docs/HANDOFF.md`, then run `git status` and `git log -1`.
+- Complete only the one stage explicitly requested by the user.
+- Preserve all unrelated dirty and untracked files. Do not edit the three source snapshot directories.
+- Before finishing a stage, run its acceptance checks and `git diff --check`.
+- Update `docs/HANDOFF.md` after implementation and testing, including unrelated dirty/untracked paths and verification results.
+- Do not commit or push without a direct user instruction. When staging is requested, use an explicit allowlist containing only files from the completed stage.
+- After a push, wait for CI and report its result in the final response.
+- Use the reference fork only for consultation; the official pinned Zapret 2 v1.0.2 runtime remains the source of truth.

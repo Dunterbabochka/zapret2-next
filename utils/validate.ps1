@@ -80,11 +80,11 @@ if ($serviceContent -notmatch '(?m)^start "Zapret 2 NEXT tests" powershell -NoEx
     Add-ValidationError 'The test console must stay open so failures remain visible.'
 }
 if ($serviceContent -notmatch 'accepted_service_presets\.txt' -or
-    $serviceContent -notmatch 'Accepted local experimental presets' -or
+    $serviceContent -notmatch 'Confirmed experimental presets' -or
     $serviceContent -notmatch 'CUSTOM SAFE' -or
     $serviceContent -notmatch 'ALT12' -or
     $serviceContent -notmatch 'CUSTOM BALANCED') {
-    Add-ValidationError 'The service menu must expose the accepted local preset marker and its SAFE/ALT12/BALANCED labels.'
+    Add-ValidationError 'The service menu must expose the confirmed public experimental preset marker and its SAFE/ALT12/BALANCED labels.'
 }
 $acceptedServiceMarkerPath = Join-Path $PSScriptRoot 'accepted_service_presets.txt'
 if (Test-Path -LiteralPath $acceptedServiceMarkerPath -PathType Leaf) {
@@ -94,19 +94,19 @@ if (Test-Path -LiteralPath $acceptedServiceMarkerPath -PathType Leaf) {
     $acceptedServiceAllowed = @('CUSTOM SAFE', 'ALT12', 'CUSTOM BALANCED')
     foreach ($acceptedServiceName in $acceptedServiceNames) {
         if ($acceptedServiceAllowed -notcontains $acceptedServiceName) {
-            Add-ValidationError "Unknown or unaccepted local service preset: $acceptedServiceName"
+            Add-ValidationError "Unknown or unconfirmed public service preset: $acceptedServiceName"
             continue
         }
         $acceptedServicePresetPath = Join-Path $presetDir ($acceptedServiceName + '.txt.in')
         if (-not (Test-Path -LiteralPath $acceptedServicePresetPath -PathType Leaf)) {
-            Add-ValidationError "Accepted local service preset is missing its template: $acceptedServiceName"
+            Add-ValidationError "Confirmed public service preset is missing its template: $acceptedServiceName"
         }
     }
     if (@($acceptedServiceNames | Sort-Object -Unique).Count -ne $acceptedServiceNames.Count) {
         Add-ValidationError 'accepted_service_presets.txt must not contain duplicate preset names.'
     }
     if ($acceptedServiceNames -contains 'CUSTOM AGGRESSIVE') {
-        Add-ValidationError 'CUSTOM AGGRESSIVE must remain out of the local service marker until voice acceptance exists.'
+        Add-ValidationError 'CUSTOM AGGRESSIVE must remain out of the public service marker until voice acceptance exists.'
     }
 }
 $ipsetMenuBlock = [regex]::Match($serviceContent, '(?ms)^:ipset_filter\r?\n.*?(?=^:[A-Za-z_]+\r?$)').Value
@@ -201,17 +201,28 @@ if ($releaseBuilderAvailable) {
         }
     }
     foreach ($excludedPreset in @(
-        'ALT12.txt.in', 'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
-        'CUSTOM SAFE.txt.in', 'CUSTOM BALANCED.txt.in', 'CUSTOM AGGRESSIVE.txt.in'
+        'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
+        'CUSTOM AGGRESSIVE.txt.in'
     )) {
         if ($releaseBuilder -notmatch [regex]::Escape("'$excludedPreset'")) {
-            Add-ValidationError "Release builder must remove experimental preset: $excludedPreset"
+            Add-ValidationError "Release builder must remove unsupported experimental preset: $excludedPreset"
+        }
+    }
+    foreach ($publishedExperimentalPreset in @('ALT12.txt.in', 'CUSTOM SAFE.txt.in', 'CUSTOM BALANCED.txt.in')) {
+        if ($releaseBuilder -match [regex]::Escape("'$publishedExperimentalPreset'")) {
+            Add-ValidationError "Release builder must retain confirmed public experimental preset: $publishedExperimentalPreset"
         }
     }
 }
 
-if ($releaseBuilderAvailable -and $releaseBuilder -notmatch 'accepted_service_presets\.txt') {
-    Add-ValidationError 'Release builder must remove the local accepted service marker.'
+if ($releaseBuilderAvailable -and $releaseBuilder -match 'accepted_service_presets\.txt') {
+    Add-ValidationError 'Release builder must retain the confirmed public service marker.'
+}
+if ($releaseBuilderAvailable -and $releaseBuilder -match 'list-discord-web\.txt') {
+    Add-ValidationError 'Release builder must retain the CUSTOM Discord Web hostlist.'
+}
+if ($releaseBuilderAvailable -and ($releaseBuilder -notmatch 'ipset-all\.txt\.backup' -or $releaseBuilder -notmatch 'The package must not inherit mutable owner settings')) {
+    Add-ValidationError 'Release builder must remove the IPSet backup and reset mutable mode files.'
 }
 $gameModes = if ($Quick) { @('off') } else { @('off', 'tcp', 'udp', 'all') }
 $ipsetModes = if ($Quick) { @('loaded') } else { @('loaded', 'none', 'any') }
@@ -393,11 +404,16 @@ $customRootBatches = @(Get-ChildItem -LiteralPath $root -Filter '*.bat' -File |
 $customStaticCount = @($customDefinitions | Where-Object {
     Test-Path -LiteralPath (Join-Path $presetDir ($_.Name + '.txt.in')) -PathType Leaf
 }).Count
+$expectedCustomNames = if ($releaseBuilderAvailable) {
+    @($customDefinitions | ForEach-Object Name)
+} else {
+    @('CUSTOM SAFE', 'CUSTOM BALANCED')
+}
 foreach ($definition in $customDefinitions) {
     $customPath = Join-Path $presetDir ($definition.Name + '.txt.in')
     if (-not (Test-Path -LiteralPath $customPath -PathType Leaf)) {
-        if ($customStaticCount -gt 0) {
-            Add-ValidationError ('Missing experimental preset from an incomplete CUSTOM set: {0}' -f $definition.Name)
+        if ($expectedCustomNames -contains $definition.Name) {
+            Add-ValidationError ('Missing expected CUSTOM preset: {0}' -f $definition.Name)
         }
         continue
     }
@@ -445,8 +461,13 @@ foreach ($definition in $customDefinitions) {
     if (@($customRootBatches | Where-Object { $_ -like ($definition.Name + '*') }).Count -gt 0) {
         Add-ValidationError ('{0} must not have a public launcher.' -f $definition.Name)
     }
-    if ($releaseBuilderForCustom -notmatch [regex]::Escape($definition.Name + '.txt.in')) {
-        Add-ValidationError ('Release builder must remove experimental preset: {0}' -f $definition.Name)
+    $customTemplateToken = [regex]::Escape($definition.Name + '.txt.in')
+    if ($definition.Name -in @('CUSTOM SAFE', 'CUSTOM BALANCED')) {
+        if ($releaseBuilderForCustom -match $customTemplateToken) {
+            Add-ValidationError ('Release builder must retain confirmed public preset: {0}' -f $definition.Name)
+        }
+    } elseif ($releaseBuilderForCustom -notmatch $customTemplateToken) {
+        Add-ValidationError ('Release builder must remove unsupported experimental preset: {0}' -f $definition.Name)
     }
     $safeCustom = $definition.Name -replace ' ', '_'
     $customOutput = Join-Path $runtimeDir ($safeCustom + '-candidate-validate.txt')
@@ -507,8 +528,8 @@ foreach ($definition in $customDefinitions) {
 
 $customHarnessPath = Join-Path $PSScriptRoot 'test-custom-presets.ps1'
 if (-not (Test-Path -LiteralPath $customHarnessPath -PathType Leaf)) {
-    if ($customStaticCount -gt 0) {
-        Add-ValidationError 'The deterministic CUSTOM A/B harness is missing.'
+    if ($customStaticCount -gt 0 -and $releaseBuilderAvailable) {
+        Add-ValidationError 'The deterministic CUSTOM A/B harness is missing from the source tree.'
     }
 } else {
     $customHarnessText = Get-Content -LiteralPath $customHarnessPath -Raw
@@ -533,7 +554,11 @@ if (-not (Test-Path -LiteralPath $customHarnessPath -PathType Leaf)) {
         Add-ValidationError 'The CUSTOM A/B winner must require complete mandatory transport and profile/action evidence.'
     }
     try {
-        & $customHarnessPath -SelfTest | Out-Host
+        $customSelfTestOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $customHarnessPath -SelfTest 2>&1
+        $customSelfTestOutput | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "CUSTOM A/B self-test exited with code $LASTEXITCODE."
+        }
     } catch {
         Add-ValidationError ('The CUSTOM A/B self-test failed: {0}' -f $_.Exception.Message)
     }

@@ -130,15 +130,15 @@ for %%P in ("general" "ALT" "ALT3" "ALT5" "ALT11" "FAKE TLS AUTO ALT2") do (
 )
 if exist "%ROOT%\utils\accepted_service_presets.txt" (
   echo.
-  echo Accepted local experimental presets:
+  echo Confirmed experimental presets:
   for /f "usebackq eol=# delims=" %%P in ("%ROOT%\utils\accepted_service_presets.txt") do (
     if exist "%ROOT%\presets\%%P.txt.in" (
       set /a count+=1
       set "preset!count!=%%P"
-      set "PRESET_LABEL=accepted local"
-      if /I "%%P"=="CUSTOM SAFE" set "PRESET_LABEL=recommended custom"
-      if /I "%%P"=="ALT12" set "PRESET_LABEL=confirmed fallback"
-      if /I "%%P"=="CUSTOM BALANCED" set "PRESET_LABEL=stronger custom"
+      set "PRESET_LABEL=confirmed experimental"
+      if /I "%%P"=="CUSTOM SAFE" set "PRESET_LABEL=recommended experimental"
+      if /I "%%P"=="ALT12" set "PRESET_LABEL=validated fallback"
+      if /I "%%P"=="CUSTOM BALANCED" set "PRESET_LABEL=stronger experimental"
       echo   !count!. %%P [!PRESET_LABEL!]
     )
   )

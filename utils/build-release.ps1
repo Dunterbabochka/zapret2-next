@@ -28,14 +28,23 @@ foreach ($sourceOnlyPath in @(
     'utils\aggregate-beta-results.ps1',
     'utils\configure-repository.ps1',
     'utils\test-custom-presets.ps1',
-    'utils\accepted_service_presets.txt',
-    'lists\list-discord-web.txt'
+    'lists\ipset-all.txt.backup'
 )) {
     Remove-Item (Join-Path $stage $sourceOnlyPath) -Force -ErrorAction SilentlyContinue
 }
+
+# The package must not inherit mutable owner settings from the source worktree.
+$releaseModes = @{
+    'game_filter.mode' = 'off'
+    'ipset_filter.mode' = 'loaded'
+    'voice_filter.mode' = 'compatible'
+}
+foreach ($entry in $releaseModes.GetEnumerator()) {
+    [IO.File]::WriteAllText((Join-Path $stage ('utils\' + $entry.Key)), $entry.Value + "`r`n", [Text.Encoding]::ASCII)
+}
 foreach ($experimentalPreset in @(
-    'ALT12.txt.in', 'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
-    'CUSTOM SAFE.txt.in', 'CUSTOM BALANCED.txt.in', 'CUSTOM AGGRESSIVE.txt.in'
+    'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
+    'CUSTOM AGGRESSIVE.txt.in'
 )) {
     Remove-Item (Join-Path $stage "presets\$experimentalPreset") -Force -ErrorAction SilentlyContinue
 }

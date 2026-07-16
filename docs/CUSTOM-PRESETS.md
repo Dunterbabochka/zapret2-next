@@ -1,8 +1,8 @@
 # Experimental CUSTOM presets
 
-These presets are deliberately separate from the public release and from the frozen ALT12 reference.
+ALT12, CUSTOM SAFE and CUSTOM BALANCED are published as opt-in experimental profiles. They are separate from the six standard profiles and are not selected automatically by Compatibility Wizard.
 
-Current recommendation: keep ALT12 as the confirmed reference until a clean acceptance run proves a CUSTOM candidate. For the experimental ladder, test SAFE first, use BALANCED when SAFE is insufficient, and reserve AGGRESSIVE for networks where both lighter candidates fail. This is a testing order, not a provider compatibility claim.
+Current recommendation: test SAFE first, use ALT12 as the validated fallback, and use BALANCED when SAFE is insufficient. AGGRESSIVE remains a development-only reserve because it has no separate Voice acceptance. This is a testing order, not a provider compatibility claim.
 
 | Preset | Intended role | Native Zapret 2 strategy | Main limit |
 | --- | --- | --- | --- |
@@ -22,7 +22,7 @@ All three templates use the official pinned Zapret 2 v1.0.2 Lua actions. They do
 - service.bat does not cycle into IPSet=any, and Compatibility Wizard never emits it as a persistent recommendation. Explicit renderer/wizard overrides retain it only for strategy discovery.
 - Do not enable a proxy, VPN or TUN during the acceptance run. The A/B harness records these indicators and excludes contaminated candidates from ranking.
 - A successful HTTP response is transport evidence only. Discord App startup, updater completion, Discord Web, YouTube playback and Voice require fresh manual checks.
-- CUSTOM SAFE, ALT12 and CUSTOM BALANCED are now exposed only in the local `service.bat` menu through `utils/accepted_service_presets.txt`; CUSTOM AGGRESSIVE remains excluded because it has no fresh voice acceptance. None of them is added to Compatibility Wizard menus, public launchers or the public release allowlist.
+- CUSTOM SAFE, ALT12 and CUSTOM BALANCED are exposed in the public `service.bat` menu through `utils/accepted_service_presets.txt`; CUSTOM AGGRESSIVE remains excluded because it has no separate Voice acceptance. None of these profiles is added to Compatibility Wizard menus or root-level launchers.
 
 ## Deterministic web A/B run
 
@@ -44,6 +44,6 @@ The non-network harness contract can be checked without Administrator rights:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\test-custom-presets.ps1 -SelfTest
 
-## Acceptance still required
+## Acceptance status and future testing
 
-For each final candidate, repeat the web run with a populated IPSet and a clean proxy/VPN/TUN preflight. Then perform a fresh Discord voice diagnostic (new UDP discovery/STUN handshake and observed Lua action), Discord App/Web/updater checks, YouTube playback, ordinary allowed-site checks, one explicitly named game launcher check and a Windows Update connectivity check. The voice diagnostic refuses an empty loaded IPSet, but network contamination is a warning: the run may proceed for diagnosis while `AcceptanceEligible` and `TwoWayAudioConfirmed` remain false. Compare the winner against ALT12 using the same Game/IPSet/Voice combination. Do not make a provider or universal claim until the result is reproduced on at least two independent networks.
+The owner-network acceptance recorded clean web and fresh Voice results for ALT12, CUSTOM SAFE and CUSTOM BALANCED. Future candidates still require a populated IPSet, clean proxy/VPN/TUN preflight, a fresh Discord voice diagnostic (new UDP discovery/STUN handshake and observed Lua action), Discord App/Web/updater checks, YouTube playback, ordinary allowed-site checks, one explicitly named game launcher check and Windows Update connectivity. The voice diagnostic refuses an empty loaded IPSet, but network contamination is a warning: the run may proceed for diagnosis while `AcceptanceEligible` and `TwoWayAudioConfirmed` remain false. Do not make a provider or universal claim until the result is reproduced on at least two independent networks.
