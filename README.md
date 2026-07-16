@@ -7,20 +7,20 @@
 [![Latest release](https://img.shields.io/github/v/release/Dunterbabochka/zapret2-next?display_name=tag&sort=semver)](https://github.com/Dunterbabochka/zapret2-next/releases/latest)
 [![Validate](https://github.com/Dunterbabochka/zapret2-next/actions/workflows/validate.yml/badge.svg)](https://github.com/Dunterbabochka/zapret2-next/actions/workflows/validate.yml)
 [![Downloads](https://img.shields.io/github/downloads/Dunterbabochka/zapret2-next/total)](https://github.com/Dunterbabochka/zapret2-next/releases)
-[![License](https://img.shields.io/github/license/Dunterbabochka/zapret2-next)](LICENSE.txt)
-[![Stars](https://img.shields.io/github/stars/Dunterbabochka/zapret2-next?style=social)](https://github.com/Dunterbabochka/zapret2-next/stargazers)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
+[![Star this repo](https://img.shields.io/badge/Star-this_repo-yellow?logo=github)](https://github.com/Dunterbabochka/zapret2-next/stargazers)
 
 **Windows 10/11 x64 · Zapret 2 v1.0.2 · Discord · YouTube · WinDivert**
 
 [Скачать последнюю версию](https://github.com/Dunterbabochka/zapret2-next/releases/latest)
 ·
-[Быстрый старт](#-быстрый-старт)
+[Быстрый старт](#quick-start)
 ·
-[Подбор стратегии](#-compatibility-wizard)
+[Подбор стратегии](#compatibility-wizard)
 ·
-[Service Manager](#-service-manager)
+[Service Manager](#service-manager)
 ·
-[Решение проблем](#-если-что-то-не-работает)
+[Решение проблем](#troubleshooting)
 
 > Если сборка оказалась полезной, поставьте репозиторию **⭐ Star**.  
 > Это помогает понять, что проект нужен людям, и мотивирует продолжать развитие.
@@ -76,6 +76,8 @@
 | Тесты пресетов | Генерирует конфигурации и проверяет их через `winws2` |
 
 ---
+
+<a id="quick-start"></a>
 
 ## Быстрый старт
 
@@ -176,6 +178,8 @@ service.bat
 
 ---
 
+<a id="compatibility-wizard"></a>
+
 ## Compatibility Wizard
 
 `compatibility wizard.bat` — локальный мастер проверки совместимости. Он не обращается к AI-сервисам и не отправляет отчёт автоматически.
@@ -205,6 +209,8 @@ Wizard выполняет четыре основных этапа:
 > Не публикуйте ZIP из диагностики без предварительной проверки и удаления данных, которыми вы не готовы делиться.
 
 ---
+
+<a id="service-manager"></a>
 
 ## Service Manager
 
@@ -381,6 +387,8 @@ Get-FileHash .\zapret2-next-vX.Y.Z.zip -Algorithm SHA256
 7. Запустите новый `service.bat` и установите службу заново.
 
 ---
+
+<a id="troubleshooting"></a>
 
 ## Если что-то не работает
 
