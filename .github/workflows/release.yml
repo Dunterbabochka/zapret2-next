@@ -15,15 +15,23 @@ jobs:
       - name: Validate
         shell: pwsh
         run: ./utils/validate.ps1
+      - name: Detect release channel
+        id: release_meta
+        shell: pwsh
+        run: |
+          $isPrerelease = '${{ github.ref_name }}' -match '-(alpha|beta|rc)(?:[.-]|$)'
+          "is_prerelease=$($isPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
       - name: Build archive
         shell: pwsh
         run: |
           $version = '${{ github.ref_name }}'.TrimStart('v')
-          ./utils/build-release.ps1 -Version $version
+          $isPrerelease = [bool]::Parse('${{ steps.release_meta.outputs.is_prerelease }}')
+          ./utils/build-release.ps1 -Version $version -Beta:$isPrerelease
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: ${{ steps.release_meta.outputs.is_prerelease != 'true' }}
+          prerelease: ${{ steps.release_meta.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
           files: |
             dist/zapret2-next-${{ github.ref_name }}.zip

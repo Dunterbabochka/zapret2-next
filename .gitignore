@@ -1,19 +1,13 @@
-runtime/*
-!runtime/.gitkeep
-dist/
-*.log
-*.tmp
-*.download
-lists/ipset-all.txt.backup
-
 # Рабочие и диагностические данные
 runtime/*
 !runtime/.gitkeep
 Results/
 
-# Сборки
-dist/*
-!dist/.gitkeep
+# Сборки и архивы
+dist/
+*.zip
+*.rar
+*.7z
 
 # Пользовательские списки
 lists/list-general-user.txt
@@ -25,11 +19,11 @@ utils/game_filter.mode
 utils/ipset_filter.mode
 utils/voice_filter.mode
 utils/check_updates.enabled
+lists/ipset-all.txt.backup
 
-# Логи, дампы и архивы
+# Логи и дампы
 *.log
 *.etl
-*.zip
 
 # Временные и резервные файлы
 *.backup
@@ -48,9 +42,25 @@ utils/check_updates.enabled
 credentials.json
 secrets.yaml
 
+# Локальные инструкции для AI-ассистентов
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.agents/
+.codex/
+.cursor/
+.aider*
+.github/copilot-instructions.md
+docs/HANDOFF.md
+docs/ROADMAP.md
+docs/STAGE-*.md
+
 # IDE и ОС
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+desktop.ini
+
+# Локальные release-чеклисты
 docs/RELEASE_CHECKLIST.md

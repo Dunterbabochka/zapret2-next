@@ -1,6 +1,7 @@
 param(
     [string]$Version = '0.1.0',
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist')
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist'),
+    [switch]$Beta
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,10 +23,15 @@ $topFiles = @(
 $dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
 foreach ($dir in $dirs) { Copy-Item (Join-Path $root $dir) (Join-Path $stage $dir) -Recurse -Force }
+
+if ($Beta) {
+    foreach ($file in @('START BETA TEST.bat', 'BETA_GUIDE_RU.txt')) {
+        Copy-Item (Join-Path $root $file) $stage -Force
+    }
+}
+
 foreach ($sourceOnlyPath in @(
     'utils\build-release.ps1',
-    'utils\build-beta-kit.ps1',
-    'utils\aggregate-beta-results.ps1',
     'utils\configure-repository.ps1',
     'utils\test-custom-presets.ps1',
     'lists\ipset-all.txt.backup'

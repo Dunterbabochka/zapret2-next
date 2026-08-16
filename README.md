@@ -20,6 +20,8 @@
 ·
 [Service Manager](#service-manager)
 ·
+[Бета-тестирование](#beta-testing)
+·
 [Решение проблем](#troubleshooting)
 
 > Если сборка оказалась полезной, поставьте репозиторию **⭐ Star**.  
@@ -124,6 +126,46 @@ service.bat
 
 ---
 
+<a id="beta-testing"></a>
+
+## Бета-тестирование
+
+Бета-канал — добровольная проверка будущей версии до стабильного релиза. Beta публикуется как обычный GitHub **Pre-release** и не заменяет последнюю стабильную версию.
+
+### Как принять участие
+
+1. Откройте [все Releases](https://github.com/Dunterbabochka/zapret2-next/releases) и выберите версию с пометкой **Pre-release**, например `v0.2.0-beta.1`.
+2. Скачайте `zapret2-next-vX.Y.Z-beta.N.zip` и `release-sha256.txt`. Не скачивайте автоматически созданный **Source code ZIP**.
+3. [Сверьте SHA256](#проверка-sha256) и распакуйте beta в отдельную папку. Не копируйте её поверх стабильной установки.
+4. Запустите `START BETA TEST.bat` от имени администратора и пройдите Compatibility Wizard.
+5. Проверьте Discord Web/App, Voice в обе стороны, демонстрацию экрана, YouTube и восстановление прежнего состояния Zapret.
+6. Создайте [Beta report](https://github.com/Dunterbabochka/zapret2-next/issues/new?template=beta-report.yml). Итоговый ZIP находится в `runtime\compatibility-results`.
+
+> [!WARNING]
+> Диагностический ZIP может содержать IP-адреса, порты, PID, временные метки, локальные пути и подробные сетевые логи. Перед публикацией обязательно проверьте вложение и отправляйте только те данные, которыми готовы поделиться. Не публикуйте raw packet captures, токены или cookies.
+
+Если beta мешает работе, закройте её процессы, удалите beta-папку и продолжайте использовать стабильную версию. Не устанавливайте beta как службу до успешной ручной проверки.
+
+### Как опубликовать beta
+
+Владельцу проекта достаточно создать и отправить prerelease-тег:
+
+```powershell
+git tag v0.2.0-beta.1
+git push origin v0.2.0-beta.1
+```
+
+Теги с суффиксом `-alpha`, `-beta` или `-rc` автоматически:
+
+- проходят полную валидацию;
+- собираются в единый пользовательский ZIP;
+- получают `START BETA TEST.bat` и краткую инструкцию;
+- публикуются как открытый GitHub Pre-release вместе с `release-sha256.txt`.
+
+Стабильные теги без prerelease-суффикса по-прежнему создают draft для финальной ручной проверки.
+
+---
+
 ## Что запускать
 
 | Файл | Назначение |
@@ -137,7 +179,7 @@ service.bat
 | `compatibility wizard.bat` | Автоматизированный подбор совместимой конфигурации |
 | `service.bat` | Установка, удаление и настройка службы |
 | `diagnose discord voice.bat` | Расширенная диагностика Discord Voice |
-| `START BETA TEST.bat` | Контролируемое тестирование с формированием отчёта |
+| `START BETA TEST.bat` | Запуск проверки из beta-архива; в стабильную сборку не входит |
 
 ---
 
@@ -472,7 +514,9 @@ GitHub автоматически создаёт Source code ZIP из отсле
 
 ## Сообщения об ошибках и результаты тестов
 
-Для отчёта о совместимости используйте шаблон Issue и укажите:
+Для prerelease-версии используйте отдельную форму [Beta report](https://github.com/Dunterbabochka/zapret2-next/issues/new?template=beta-report.yml). Для стабильной версии используйте шаблон Strategy compatibility report.
+
+В отчёте укажите:
 
 - версию Windows;
 - провайдера и регион без лишних персональных данных;
@@ -538,4 +582,4 @@ GitHub автоматически создаёт Source code ZIP из отсле
 
 Zapret 2 NEXT is an independent Windows 10/11 x64 bundle built around the official Zapret 2 `winws2` engine and Lua API. It provides ready-to-use launchers, a local Compatibility Wizard, Windows service management, Game/IPSet/Discord Voice modes, diagnostics, validation and reproducible release tooling.
 
-Download only the project release archive, verify SHA256, and remember that strategy effectiveness varies by provider and network.
+Download only the project release archive, verify SHA256, and remember that strategy effectiveness varies by provider and network.Opt-in beta testing is distributed through GitHub Pre-releases with a separate diagnostic launcher and issue form.

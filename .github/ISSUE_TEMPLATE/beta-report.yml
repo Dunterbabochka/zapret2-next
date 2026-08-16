@@ -1,0 +1,61 @@
+name: Beta report
+description: Сообщить результат проверки prerelease-версии
+title: "[Beta]: "
+labels: [beta]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за проверку beta-версии. Не публикуйте токены, cookies, raw packet captures, личные IP/MAC-адреса и локальные пути с именем пользователя.
+  - type: input
+    id: version
+    attributes:
+      label: Версия beta
+      description: Укажите тег из Releases, например v0.2.0-beta.1.
+      placeholder: v0.2.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Версия Windows
+      placeholder: Windows 11 24H2 x64
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Провайдер и регион
+      description: Регион можно указать приблизительно. Не добавляйте адрес, номер договора или IP.
+      placeholder: Провайдер, область
+    validations:
+      required: true
+  - type: checkboxes
+    id: results
+    attributes:
+      label: Что проверено
+      options:
+        - label: Discord Web и приложение запускаются
+        - label: Discord Voice работает в обе стороны
+        - label: Демонстрация экрана работает
+        - label: YouTube открывается и воспроизводит видео
+        - label: Прежнее состояние Zapret восстановлено после теста
+  - type: textarea
+    id: summary
+    attributes:
+      label: Результат и шаги воспроизведения
+      description: Опишите, что сработало или сломалось и как повторить проблему.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Очищенный отчёт
+      description: Перетащите сюда ZIP из runtime\compatibility-results или вставьте только безопасный фрагмент лога. Перед отправкой проверьте содержимое.
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Подтверждение
+      options:
+        - label: Я проверил(а) вложения и удалил(а) данные, которые не хочу публиковать.
+          required: true
