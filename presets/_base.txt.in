@@ -3,6 +3,8 @@
 # Game filter: {{GAME_MODE}}
 # IPSet filter: {{IPSET_MODE}}
 # Discord Voice: {{VOICE_MODE}}
+# Discord UDP fake: {{DISCORD_FAKE}}
+# Game UDP fake: {{GAME_FAKE}}
 
 --chdir="{{BIN_DIR}}"
 --debug={{DEBUG}}
@@ -25,6 +27,7 @@
 --blob=tls_max:@fake/tls_clienthello_max_ru.bin
 --blob=quic_google:@fake/quic_initial_www_google_com.bin
 --blob=stun:@fake/stun.bin
---blob=discord_voice:@fake/quic_initial_dbankcloud_ru.bin
+--blob=discord_voice:@fake/{{DISCORD_FAKE_FILE}}
+--blob=game_udp:@fake/{{GAME_FAKE_FILE}}
 --blob=http_iana:@fake/http_iana_org.bin
 --blob=zero:@fake/zero_512.bin

@@ -1,9 +1,10 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-set "VERSION=0.1.0"
 set "SERVICE_NAME=winws2"
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+set "VERSION=unknown"
+if exist "%ROOT%\.service\version.txt" set /p VERSION=<"%ROOT%\.service\version.txt"
 set "STATE_KEY=HKLM\System\CurrentControlSet\Services\%SERVICE_NAME%"
 set "REPO_SLUG="
 if exist "%ROOT%\.service\repository.txt" set /p REPO_SLUG=<"%ROOT%\.service\repository.txt"
@@ -28,6 +29,7 @@ call :read_status
 echo.
 echo   ZAPRET 2 NEXT SERVICE MANAGER v%VERSION%
 echo   Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!
+echo   UDP fakes: Discord=!DISCORD_FAKE!   Game=!GAME_FAKE!
 echo   Service: !SERVICE_STATUS!
 echo   -----------------------------------------------
 echo.
@@ -41,6 +43,7 @@ echo      4. Game Filter         [!GAME_MODE!]
 echo      5. IPSet Filter        [!IPSET_MODE!]
 echo      6. Auto-Update Check   [!UPDATE_MODE!]
 echo      12. Discord Voice      [!VOICE_MODE!]
+echo      13. UDP Fake Profiles [D:!DISCORD_FAKE! / G:!GAME_FAKE!]
 echo.
 echo   :: UPDATES
 echo      7. Update IPSet List
@@ -50,12 +53,13 @@ echo.
 echo   :: TOOLS
 echo      10. Run Diagnostics
 echo      11. Run Tests
+echo      14. Clear Discord Cache
 echo.
 echo   -----------------------------------------------
 echo      0. Exit
 echo.
 set "choice="
-set /p "choice=   Select option (0-12): "
+set /p "choice=   Select option (0-14): "
 if "!choice!"=="1" goto install_service
 if "!choice!"=="2" goto remove_service
 if "!choice!"=="3" goto show_status
@@ -68,6 +72,8 @@ if "!choice!"=="9" goto manual_update_check
 if "!choice!"=="10" goto diagnostics
 if "!choice!"=="11" goto tests
 if "!choice!"=="12" goto voice_filter
+if "!choice!"=="13" goto fake_profiles
+if "!choice!"=="14" goto clear_discord_cache
 if "!choice!"=="0" exit /b 0
 goto menu
 
@@ -80,6 +86,7 @@ if exist "%ROOT%\utils\game_filter.mode" set /p GAME_MODE=<"%ROOT%\utils\game_fi
 if exist "%ROOT%\utils\check_updates.enabled" (set "UPDATE_MODE=enabled") else (set "UPDATE_MODE=disabled")
 call :read_ipset_mode
 call :read_voice_mode
+call :read_fake_modes
 exit /b
 
 :get_service_status
@@ -111,6 +118,15 @@ exit /b
 set "VOICE_MODE=compatible"
 if exist "%ROOT%\utils\voice_filter.mode" set /p VOICE_MODE=<"%ROOT%\utils\voice_filter.mode"
 if /I not "!VOICE_MODE!"=="compatible" if /I not "!VOICE_MODE!"=="standard" if /I not "!VOICE_MODE!"=="off" set "VOICE_MODE=compatible"
+exit /b
+
+:read_fake_modes
+set "DISCORD_FAKE=current"
+if exist "%ROOT%\utils\discord_fake.mode" set /p DISCORD_FAKE=<"%ROOT%\utils\discord_fake.mode"
+if /I not "!DISCORD_FAKE!"=="current" if /I not "!DISCORD_FAKE!"=="steam" if /I not "!DISCORD_FAKE!"=="google" set "DISCORD_FAKE=current"
+set "GAME_FAKE=current"
+if exist "%ROOT%\utils\game_fake.mode" set /p GAME_FAKE=<"%ROOT%\utils\game_fake.mode"
+if /I not "!GAME_FAKE!"=="current" if /I not "!GAME_FAKE!"=="dbank-v2" if /I not "!GAME_FAKE!"=="steam" set "GAME_FAKE=current"
 exit /b
 
 :install_service
@@ -153,6 +169,7 @@ for %%P in (!pick!) do set "SELECTED=!preset%%P!"
 echo.
 echo Selected configuration:
 echo   Strategy: !SELECTED!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!
+echo   UDP fakes: Discord=!DISCORD_FAKE!   Game=!GAME_FAKE!
 set "confirm="
 set /p "confirm=Install this service configuration? [Y/n]: "
 if /I "!confirm!"=="N" goto menu
@@ -221,7 +238,9 @@ echo Selected strategy:  !CURRENT_PRESET!
 echo Game filter:        !GAME_MODE!
 echo IPSet filter:       !IPSET_MODE!
 echo Discord Voice:      !VOICE_MODE!
-echo Configuration:      !CURRENT_PRESET! + !GAME_MODE! + !IPSET_MODE! + !VOICE_MODE!
+echo Discord UDP fake:   !DISCORD_FAKE!
+echo Game UDP fake:      !GAME_FAKE!
+echo Configuration:      !CURRENT_PRESET! + !GAME_MODE! + !IPSET_MODE! + !VOICE_MODE! + D:!DISCORD_FAKE! + G:!GAME_FAKE!
 echo Auto update check:  !UPDATE_MODE!
 tasklist /FI "IMAGENAME eq winws2.exe" 2>nul | findstr /I "winws2.exe" >nul
 if errorlevel 1 (echo winws2 process:     not running) else (echo winws2 process:     running)
@@ -284,6 +303,74 @@ call :green "Discord Voice mode changed: !VOICE_MODE! -^> !newmode!"
 call :refresh_service_config
 pause
 goto menu
+
+:fake_profiles
+cls
+call :read_fake_modes
+echo Select an immutable UDP fake profile:
+echo.
+echo   Discord Voice (current: !DISCORD_FAKE!)
+echo      1. current   - existing confirmed dBank payload
+echo      2. steam     - new experimental Steam payload
+echo      3. google    - bundled Google QUIC payload
+echo.
+echo   Game Filter UDP (current: !GAME_FAKE!)
+echo      4. current   - existing confirmed dBank payload
+echo      5. dbank-v2  - new experimental dBank payload
+echo      6. steam     - new experimental Steam payload
+echo.
+echo      7. Reset both to current
+echo      0. Cancel
+set "fake_choice="
+set "fake_kind="
+set "fake_value="
+set /p "fake_choice=Selection (0-7): "
+if "!fake_choice!"=="0" goto menu
+if "!fake_choice!"=="1" (
+  set "fake_kind=discord"
+  set "fake_value=current"
+)
+if "!fake_choice!"=="2" (
+  set "fake_kind=discord"
+  set "fake_value=steam"
+)
+if "!fake_choice!"=="3" (
+  set "fake_kind=discord"
+  set "fake_value=google"
+)
+if "!fake_choice!"=="4" (
+  set "fake_kind=game"
+  set "fake_value=current"
+)
+if "!fake_choice!"=="5" (
+  set "fake_kind=game"
+  set "fake_value=dbank-v2"
+)
+if "!fake_choice!"=="6" (
+  set "fake_kind=game"
+  set "fake_value=steam"
+)
+if "!fake_choice!"=="7" (
+  >"%ROOT%\utils\discord_fake.mode" echo(current
+  >"%ROOT%\utils\game_fake.mode" echo(current
+  set "fake_kind=both"
+)
+if not defined fake_kind goto invalid_choice
+if /I "!fake_kind!"=="discord" >"%ROOT%\utils\discord_fake.mode" echo(!fake_value!
+if /I "!fake_kind!"=="game" >"%ROOT%\utils\game_fake.mode" echo(!fake_value!
+call :read_fake_modes
+call :green "UDP fake profiles: Discord=!DISCORD_FAKE!, Game=!GAME_FAKE!"
+call :yellow "Experimental fakes can help or break connectivity; verify Discord Voice and the affected game after switching."
+call :refresh_service_config
+pause
+goto menu
+
+:clear_discord_cache
+cls
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\clear-discord-cache.ps1"
+if errorlevel 1 call :yellow "Discord cache cleanup was incomplete; see the messages above."
+pause
+goto menu
 :update_toggle
 if exist "%ROOT%\utils\check_updates.enabled" (
   del /q "%ROOT%\utils\check_updates.enabled"
@@ -340,16 +427,30 @@ if /I "%~1"=="soft" if not exist "%ROOT%\utils\check_updates.enabled" exit /b 0
 call :require_repository
 if errorlevel 1 exit /b 1
 set "REMOTE_VERSION="
-for /f "usebackq delims=" %%V in (`curl.exe -fsSL --connect-timeout 4 --max-time 8 "%RAW_BASE%/.service/version.txt" 2^>nul`) do set "REMOTE_VERSION=%%V"
+set "LATEST_RELEASE_URL="
+for /f "usebackq delims=" %%U in (`curl.exe -fsSL -o NUL -w "%%{url_effective}" --connect-timeout 4 --max-time 10 "%RELEASE_URL%/latest" 2^>nul ^| findstr /I /C:"/releases/tag/"`) do set "LATEST_RELEASE_URL=%%U"
+if defined LATEST_RELEASE_URL for %%V in ("!LATEST_RELEASE_URL!") do set "REMOTE_VERSION=%%~nxV"
+if /I "!REMOTE_VERSION:~0,1!"=="v" set "REMOTE_VERSION=!REMOTE_VERSION:~1!"
+set "VALID_REMOTE_VERSION="
+for /f "delims=" %%V in ('echo(!REMOTE_VERSION! ^| findstr.exe /R /X "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"') do set "VALID_REMOTE_VERSION=%%V"
+set "REMOTE_VERSION=!VALID_REMOTE_VERSION!"
 if not defined REMOTE_VERSION (
   if /I not "%~1"=="soft" call :yellow "Could not check for updates."
-  exit /b 1
-)
-if /I "!REMOTE_VERSION!"=="%VERSION%" (
-  if /I not "%~1"=="soft" call :green "You are using the latest version (%VERSION%)."
 ) else (
+set "Z2_LOCAL_VERSION=%VERSION%"
+set "Z2_REMOTE_VERSION=!REMOTE_VERSION!"
+set "VERSION_RELATION=unknown"
+for /f "usebackq delims=" %%R in (`powershell -NoProfile -Command "try { $localText=$env:Z2_LOCAL_VERSION; $remoteText=$env:Z2_REMOTE_VERSION; $local=[version](($localText -split '-',2)[0]); $remote=[version](($remoteText -split '-',2)[0]); if ($remote -gt $local) { 'remote-newer' } elseif ($local -gt $remote) { 'local-newer' } elseif ($localText -eq $remoteText) { 'equal' } elseif ($localText.Contains('-') -and -not $remoteText.Contains('-')) { 'remote-newer' } else { 'local-newer' } } catch { 'unknown' }"`) do set "VERSION_RELATION=%%R"
+if /I "!VERSION_RELATION!"=="equal" (
+  if /I not "%~1"=="soft" call :green "You are using the latest version (%VERSION%)."
+) else if /I "!VERSION_RELATION!"=="remote-newer" (
   call :yellow "A new version is available: !REMOTE_VERSION! (installed: %VERSION%)"
   echo Releases: %RELEASE_URL%
+) else if /I "!VERSION_RELATION!"=="local-newer" (
+  if /I not "%~1"=="soft" call :yellow "Installed version %VERSION% is newer than the latest published release !REMOTE_VERSION!."
+) else (
+  if /I not "%~1"=="soft" call :yellow "Could not compare installed version %VERSION% with published version !REMOTE_VERSION!."
+)
 )
 exit /b 0
 

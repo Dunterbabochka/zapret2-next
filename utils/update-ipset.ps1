@@ -44,6 +44,23 @@ try {
     }
 
     $entryCount = Test-IpsetFile -Path $temporaryPath
+    $currentEntries = if (Test-Path -LiteralPath $destinationPath -PathType Leaf) {
+        @(Get-Content -LiteralPath $destinationPath |
+            ForEach-Object { ([string]$_).Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith('#') })
+    } else {
+        @()
+    }
+    $candidateEntries = @(Get-Content -LiteralPath $temporaryPath |
+        ForEach-Object { ([string]$_).Trim() } |
+        Where-Object { $_ -and -not $_.StartsWith('#') })
+    $currentSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $candidateSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($entry in $currentEntries) { [void]$currentSet.Add($entry) }
+    foreach ($entry in $candidateEntries) { [void]$candidateSet.Add($entry) }
+    $addedCount = @($candidateEntries | Where-Object { -not $currentSet.Contains($_) }).Count
+    $removedCount = @($currentEntries | Where-Object { -not $candidateSet.Contains($_) }).Count
+    Write-Host "[INFO] IPSet candidate diff: +$addedCount / -$removedCount." -ForegroundColor Cyan
     if (Test-Path -LiteralPath $destinationPath -PathType Leaf) {
         Copy-Item -LiteralPath $destinationPath -Destination $backupPath -Force
     }

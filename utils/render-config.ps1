@@ -15,6 +15,12 @@ param(
     [ValidateSet('compatible', 'standard', 'off')]
     [string]$VoiceMode,
 
+    [ValidateSet('current', 'steam', 'google')]
+    [string]$DiscordFake,
+
+    [ValidateSet('current', 'dbank-v2', 'steam')]
+    [string]$GameFake,
+
     [string]$DebugLog,
 
     [switch]$InterceptOff,
@@ -88,6 +94,26 @@ function Get-ModeSetting {
 $gameMode = Get-ModeSetting 'GameMode' 'utils\game_filter.mode' 'off' @('off', 'tcp', 'udp', 'all')
 $ipsetMode = Get-ModeSetting 'IPSetMode' 'utils\ipset_filter.mode' 'loaded' @('loaded', 'none', 'any')
 $voiceMode = Get-ModeSetting 'VoiceMode' 'utils\voice_filter.mode' 'compatible' @('compatible', 'standard', 'off')
+$discordFake = Get-ModeSetting 'DiscordFake' 'utils\discord_fake.mode' 'current' @('current', 'steam', 'google')
+$gameFake = Get-ModeSetting 'GameFake' 'utils\game_fake.mode' 'current' @('current', 'dbank-v2', 'steam')
+$discordFakeFiles = @{
+    'current' = 'quic_initial_dbankcloud_ru.bin'
+    'steam' = 'quic_initial_steamcommunity_com.bin'
+    'google' = 'quic_initial_www_google_com.bin'
+}
+$gameFakeFiles = @{
+    'current' = 'quic_initial_dbankcloud_ru.bin'
+    'dbank-v2' = 'quic_initial_dbankcloud_ru_v2.bin'
+    'steam' = 'quic_initial_steamcommunity_com.bin'
+}
+$discordFakeFile = $discordFakeFiles[$discordFake]
+$gameFakeFile = $gameFakeFiles[$gameFake]
+foreach ($fakeFile in @($discordFakeFile, $gameFakeFile)) {
+    $fakePath = Join-Path $root "bin\fake\$fakeFile"
+    if (-not (Test-Path -LiteralPath $fakePath -PathType Leaf)) {
+        throw "Selected UDP fake not found: $fakePath"
+    }
+}
 $hasPresetCompatibleVoice = $sections.ContainsKey('VOICE_COMPATIBLE') -and $sections['VOICE_COMPATIBLE'].Count -gt 0
 $ipsetTcpPorts = @()
 if ($sections.ContainsKey('IPSET_TCP_PORTS')) {
@@ -203,7 +229,7 @@ $gameUdpProfile = @(
         '--ipset-exclude=../lists/ipset-exclude-user.txt'
         '--payload=all'
         '--out-range=-n4'
-        '--lua-desync=fake:blob=discord_voice:repeats=10:payload=all'
+        '--lua-desync=fake:blob=game_udp:repeats=10:payload=all'
     ) -join "`r`n"
 $gameUdpProfile = $gameUdpProfile.Replace('{{IPSET_INCLUDE}}', $ipsetInclude)
 $content = $content.Replace('{{GAME_UDP_PROFILE}}', $gameUdpProfile)
@@ -211,6 +237,10 @@ $content = $content.Replace('{{PRESET}}', $Preset)
 $content = $content.Replace('{{GAME_MODE}}', $gameMode)
 $content = $content.Replace('{{IPSET_MODE}}', $ipsetMode)
 $content = $content.Replace('{{VOICE_MODE}}', $voiceMode)
+$content = $content.Replace('{{DISCORD_FAKE}}', $discordFake)
+$content = $content.Replace('{{GAME_FAKE}}', $gameFake)
+$content = $content.Replace('{{DISCORD_FAKE_FILE}}', $discordFakeFile)
+$content = $content.Replace('{{GAME_FAKE_FILE}}', $gameFakeFile)
 $content = $content.Replace('{{GAME_TCP}}', $gameTcp)
 $content = $content.Replace('{{GAME_UDP}}', $gameUdp)
 $content = $content.Replace('{{WF_UDP}}', $wfUdp)

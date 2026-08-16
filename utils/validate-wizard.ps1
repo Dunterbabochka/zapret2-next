@@ -11,6 +11,8 @@ $statePaths = @(
     (Join-Path $root 'utils\game_filter.mode'),
     (Join-Path $root 'utils\ipset_filter.mode'),
     (Join-Path $root 'utils\voice_filter.mode'),
+    (Join-Path $root 'utils\discord_fake.mode'),
+    (Join-Path $root 'utils\game_fake.mode'),
     (Join-Path $root 'lists\ipset-all.txt')
 )
 $stateBefore = @{}

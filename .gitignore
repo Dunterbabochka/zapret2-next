@@ -18,6 +18,8 @@ lists/ipset-exclude-user.txt
 utils/game_filter.mode
 utils/ipset_filter.mode
 utils/voice_filter.mode
+utils/discord_fake.mode
+utils/game_fake.mode
 utils/check_updates.enabled
 lists/ipset-all.txt.backup
 

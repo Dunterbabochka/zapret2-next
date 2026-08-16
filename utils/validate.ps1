@@ -60,15 +60,47 @@ if ($runnerContent -notmatch 'invoke-winws\.ps1') {
 }
 
 $serviceContent = Get-Content -LiteralPath (Join-Path $root 'service.bat') -Raw
+$versionPath = Join-Path $root '.service\version.txt'
+$projectVersion = if (Test-Path -LiteralPath $versionPath -PathType Leaf) {
+    (Get-Content -LiteralPath $versionPath -Raw).Trim()
+} else {
+    ''
+}
+if ($projectVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+    Add-ValidationError '.service\version.txt must contain one semantic version such as 0.2.1 or 0.3.0-beta.1.'
+}
+if ($serviceContent -notmatch '(?m)^if exist "%ROOT%\\\.service\\version\.txt" set /p VERSION=<' -or
+    $serviceContent -match '(?m)^set "VERSION=\d') {
+    Add-ValidationError 'service.bat must read its installed version from .service\version.txt instead of hard-coding it.'
+}
+if ($serviceContent -notmatch 'curl\.exe -fsSL -o NUL -w "%%\{url_effective\}"' -or
+    $serviceContent -notmatch 'findstr /I /C:"/releases/tag/"' -or
+    $serviceContent -notmatch 'findstr\.exe /R /X "\[0-9\]' -or
+    $serviceContent -match 'RAW_BASE%/\.service/version\.txt' -or
+    $serviceContent -notmatch 'VERSION_RELATION') {
+    Add-ValidationError 'Update checks must compare the installed package with the latest published GitHub Release, not the version file on main.'
+}
+$releaseBuilderPath = Join-Path $PSScriptRoot 'build-release.ps1'
+$releaseBuilderAvailable = Test-Path -LiteralPath $releaseBuilderPath -PathType Leaf
+$buildReleaseContent = if ($releaseBuilderAvailable) { Get-Content -LiteralPath $releaseBuilderPath -Raw } else { '' }
+if ($releaseBuilderAvailable -and ($buildReleaseContent -notmatch 'Join-Path \$stage ''\.service\\version\.txt''' -or
+    $buildReleaseContent -notmatch 'Stable release version')) {
+    Add-ValidationError 'build-release.ps1 must stamp the requested version and reject mismatched stable releases.'
+}
 if ($serviceContent -notmatch '(?m)^echo {6}10\. Run Diagnostics\r?$' -or
     $serviceContent -notmatch '(?m)^echo {6}11\. Run Tests\r?$' -or
-    $serviceContent -notmatch '(?m)^echo {6}12\. Discord Voice') {
-    Add-ValidationError 'The two-digit service menu items are not aligned or Discord Voice is missing.'
+    $serviceContent -notmatch '(?m)^echo {6}12\. Discord Voice' -or
+    $serviceContent -notmatch '(?m)^echo {6}13\. UDP Fake Profiles' -or
+    $serviceContent -notmatch '(?m)^echo {6}14\. Clear Discord Cache') {
+    Add-ValidationError 'The two-digit service menu items are not aligned or a required settings/tool item is missing.'
 }
-if ($serviceContent -notmatch 'Select option \(0-12\):' -or
+if ($serviceContent -notmatch 'Select option \(0-14\):' -or
     $serviceContent -notmatch 'goto voice_filter' -or
-    $serviceContent -notmatch 'Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!') {
-    Add-ValidationError 'The service menu must expose the combined configuration status and Discord Voice control.'
+    $serviceContent -notmatch 'goto fake_profiles' -or
+    $serviceContent -notmatch 'goto clear_discord_cache' -or
+    $serviceContent -notmatch 'Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!' -or
+    $serviceContent -notmatch 'UDP fakes: Discord=!DISCORD_FAKE!   Game=!GAME_FAKE!') {
+    Add-ValidationError 'The service menu must expose the combined configuration, UDP fake selector and cache cleanup.'
 }
 if ($serviceContent -notmatch ':get_service_status' -or
     $serviceContent -notmatch 'Get-Service -Name' -or
@@ -78,6 +110,63 @@ if ($serviceContent -notmatch ':get_service_status' -or
 }
 if ($serviceContent -notmatch '(?m)^start "Zapret 2 NEXT tests" powershell -NoExit ') {
     Add-ValidationError 'The test console must stay open so failures remain visible.'
+}
+$cacheCleanupPath = Join-Path $PSScriptRoot 'clear-discord-cache.ps1'
+$cacheCleanupContent = if (Test-Path -LiteralPath $cacheCleanupPath -PathType Leaf) {
+    Get-Content -LiteralPath $cacheCleanupPath -Raw
+} else { '' }
+foreach ($cacheToken in @('DiscordPTB', 'DiscordCanary', 'DiscordDevelopment', 'Code Cache', 'GPUCache', '[switch]$ListOnly', 'Continue? [y/N]', 'Remove-Item -LiteralPath')) {
+    if ($cacheCleanupContent -notmatch [regex]::Escape($cacheToken)) {
+        Add-ValidationError "Discord cache cleanup is missing its safety/channel contract: $cacheToken"
+    }
+}
+$ipsetSyncPath = Join-Path $PSScriptRoot 'sync-upstream-ipset.ps1'
+if ($releaseBuilderAvailable) {
+    $ipsetSyncContent = if (Test-Path -LiteralPath $ipsetSyncPath -PathType Leaf) {
+        Get-Content -LiteralPath $ipsetSyncPath -Raw
+    } else { '' }
+    foreach ($syncToken in @('[switch]$Apply', 'added.txt', 'removed.txt', 'SUMMARY.txt', 'suspiciously small snapshot', 'original files were restored')) {
+        if ($ipsetSyncContent -notmatch [regex]::Escape($syncToken)) {
+            Add-ValidationError "Upstream IPSet synchronization is missing its preview/apply safety contract: $syncToken"
+        }
+    }
+}
+if ($serviceContent -notmatch 'utils\\discord_fake\.mode' -or
+    $serviceContent -notmatch 'utils\\game_fake\.mode' -or
+    $serviceContent -notmatch 'call :read_fake_modes') {
+    Add-ValidationError 'Service Manager must persist independent allowlisted Discord and Game fake selections.'
+}
+$rendererContent = Get-Content -LiteralPath $renderer -Raw
+if ($rendererContent -notmatch "'steam' = 'quic_initial_steamcommunity_com\.bin'" -or
+    $rendererContent -notmatch "'dbank-v2' = 'quic_initial_dbankcloud_ru_v2\.bin'" -or
+    $rendererContent -notmatch 'blob=game_udp') {
+    Add-ValidationError 'Renderer must map immutable allowlisted UDP fakes and keep Game UDP independent from Discord Voice.'
+}
+if ($releaseBuilderAvailable) {
+    foreach ($releaseToken in @('sync-upstream-ipset.ps1', 'discord_fake.mode', 'game_fake.mode')) {
+        if ($buildReleaseContent -notmatch [regex]::Escape($releaseToken)) {
+            Add-ValidationError "Release builder is missing UDP fake/IPSet source-only policy: $releaseToken"
+        }
+    }
+}
+$fakePayloadHashes = [ordered]@{
+    'quic_initial_steamcommunity_com.bin' = '2FE18B3BD20807D36704D0B072092EE49AE84EDCA907A4420AB9A0F0F28FDDCF'
+    'quic_initial_dbankcloud_ru_v2.bin' = 'E065870CB0D13152E6132807BBF42218A9E7CD8D96F5602B61674CC540F3A56E'
+}
+$sumContent = Get-Content -LiteralPath (Join-Path $root 'SHA256SUMS.txt') -Raw
+foreach ($fakePayload in $fakePayloadHashes.GetEnumerator()) {
+    $fakePayloadPath = Join-Path $root ('bin\fake\' + $fakePayload.Key)
+    if (-not (Test-Path -LiteralPath $fakePayloadPath -PathType Leaf)) {
+        Add-ValidationError "Missing opt-in UDP fake payload: $($fakePayload.Key)"
+        continue
+    }
+    $actualFakeHash = (Get-FileHash -LiteralPath $fakePayloadPath -Algorithm SHA256).Hash
+    if ($actualFakeHash -ne $fakePayload.Value) {
+        Add-ValidationError "Unexpected SHA256 for opt-in UDP fake payload: $($fakePayload.Key)"
+    }
+    if ($sumContent -notmatch ('(?im)^' + $fakePayload.Value + '\s+bin/fake/' + [regex]::Escape($fakePayload.Key) + '\r?$')) {
+        Add-ValidationError "SHA256SUMS.txt is missing opt-in UDP fake payload: $($fakePayload.Key)"
+    }
 }
 if ($serviceContent -notmatch 'accepted_service_presets\.txt' -or
     $serviceContent -notmatch 'Confirmed experimental presets' -or
@@ -254,6 +343,8 @@ $statePaths = @(
     (Join-Path $root 'utils\game_filter.mode'),
     (Join-Path $root 'utils\ipset_filter.mode'),
     (Join-Path $root 'utils\voice_filter.mode'),
+    (Join-Path $root 'utils\discord_fake.mode'),
+    (Join-Path $root 'utils\game_fake.mode'),
     (Join-Path $root 'lists\ipset-all.txt')
 )
 $stateBefore = @{}
@@ -573,7 +664,7 @@ foreach ($gameMode in $gameModes) {
                 $safeName = $name -replace ' ', '_'
                 $output = Join-Path $runtimeDir ("{0}-g-{1}-i-{2}-v-{3}.txt" -f $safeName, $gameMode, $ipsetMode, $voiceMode)
                 try {
-                    & $renderer -Preset $name -Output $output -GameMode $gameMode -IPSetMode $ipsetMode -VoiceMode $voiceMode | Out-Null
+                    & $renderer -Preset $name -Output $output -GameMode $gameMode -IPSetMode $ipsetMode -VoiceMode $voiceMode -DiscordFake current -GameFake current | Out-Null
                     $renderCount++
                 } catch {
                     Add-ValidationError "$label render failed: $($_.Exception.Message)"
@@ -597,7 +688,9 @@ foreach ($gameMode in $gameModes) {
                 foreach ($header in @(
                     "# Game filter: $gameMode",
                     "# IPSet filter: $ipsetMode",
-                    "# Discord Voice: $voiceMode"
+                    "# Discord Voice: $voiceMode",
+                    '# Discord UDP fake: current',
+                    '# Game UDP fake: current'
                 )) {
                     if ($lines -notcontains $header) { Add-ValidationError "$label is missing header '$header'." }
                 }
@@ -611,6 +704,9 @@ foreach ($gameMode in $gameModes) {
                 }
                 if ($gameUdpProfile.Count -eq 0 -or $gameUdpProfile[0] -ne "--filter-udp=$expectedUdp") {
                     Add-ValidationError "$label has the wrong Game UDP profile."
+                }
+                if ($gameUdpProfile -notcontains '--lua-desync=fake:blob=game_udp:repeats=10:payload=all') {
+                    Add-ValidationError "$label does not keep the Game UDP fake independent from Discord Voice."
                 }
 
                 $expectedVoiceProfile = switch ($voiceMode) {
@@ -678,6 +774,44 @@ foreach ($gameMode in $gameModes) {
     }
 }
 
+$discordFakeCatalog = [ordered]@{
+    'current' = 'quic_initial_dbankcloud_ru.bin'
+    'steam' = 'quic_initial_steamcommunity_com.bin'
+    'google' = 'quic_initial_www_google_com.bin'
+}
+$gameFakeCatalog = [ordered]@{
+    'current' = 'quic_initial_dbankcloud_ru.bin'
+    'dbank-v2' = 'quic_initial_dbankcloud_ru_v2.bin'
+    'steam' = 'quic_initial_steamcommunity_com.bin'
+}
+$fakeRenderCount = 0
+foreach ($discordFakeEntry in $discordFakeCatalog.GetEnumerator()) {
+    foreach ($gameFakeEntry in $gameFakeCatalog.GetEnumerator()) {
+        $fakeLabel = "discord=$($discordFakeEntry.Key)/game=$($gameFakeEntry.Key)"
+        $fakeOutput = Join-Path $runtimeDir ("fake-d-{0}-g-{1}.txt" -f $discordFakeEntry.Key, $gameFakeEntry.Key)
+        try {
+            & $renderer -Preset 'general' -Output $fakeOutput -GameMode udp -IPSetMode loaded -VoiceMode compatible -DiscordFake $discordFakeEntry.Key -GameFake $gameFakeEntry.Key | Out-Null
+            $fakeRenderCount++
+            $fakeLines = @(Get-Content -LiteralPath $fakeOutput | ForEach-Object { $_.Trim() })
+            $expectedDiscordBlob = '--blob=discord_voice:@"' + $expectedBinDir + '/fake/' + $discordFakeEntry.Value + '"'
+            $expectedGameBlob = '--blob=game_udp:@"' + $expectedBinDir + '/fake/' + $gameFakeEntry.Value + '"'
+            foreach ($expectedLine in @(
+                "# Discord UDP fake: $($discordFakeEntry.Key)",
+                "# Game UDP fake: $($gameFakeEntry.Key)",
+                $expectedDiscordBlob,
+                $expectedGameBlob
+            )) {
+                if ($fakeLines -notcontains $expectedLine) {
+                    Add-ValidationError "$fakeLabel is missing rendered line: $expectedLine"
+                }
+            }
+            Test-ReferencedFiles -ConfigPath $fakeOutput -PresetName $fakeLabel
+        } catch {
+            Add-ValidationError "$fakeLabel render failed: $($_.Exception.Message)"
+        }
+    }
+}
+
 $dryOutput = Join-Path $runtimeDir 'general-dry-run.txt'
 try {
     & $renderer -Preset 'general' -Output $dryOutput -GameMode off -IPSetMode loaded -VoiceMode compatible -DryRun | Out-Null
@@ -708,10 +842,14 @@ try {
     $savedGameMode = Get-SavedMode (Join-Path $root 'utils\game_filter.mode') 'off' @('off', 'tcp', 'udp', 'all')
     $savedIPSetMode = Get-SavedMode (Join-Path $root 'utils\ipset_filter.mode') 'loaded' @('loaded', 'none', 'any')
     $savedVoiceMode = Get-SavedMode (Join-Path $root 'utils\voice_filter.mode') 'compatible' @('compatible', 'standard', 'off')
+    $savedDiscordFake = Get-SavedMode (Join-Path $root 'utils\discord_fake.mode') 'current' @('current', 'steam', 'google')
+    $savedGameFake = Get-SavedMode (Join-Path $root 'utils\game_fake.mode') 'current' @('current', 'dbank-v2', 'steam')
     foreach ($header in @(
         "# Game filter: $savedGameMode",
         "# IPSet filter: $savedIPSetMode",
-        "# Discord Voice: $savedVoiceMode"
+        "# Discord Voice: $savedVoiceMode",
+        "# Discord UDP fake: $savedDiscordFake",
+        "# Game UDP fake: $savedGameFake"
     )) {
         if ($savedLines -notcontains $header) { Add-ValidationError "Saved-mode render is missing header '$header'." }
     }
@@ -731,7 +869,11 @@ foreach ($path in $statePaths) {
 }
 
 $forbidden = Get-ChildItem -LiteralPath $root -Recurse -File |
-    Where-Object { $_.FullName -notmatch '[\\/](THIRD_PARTY_NOTICES\.md|LICENSE\.txt|validate\.ps1)$' -and $_.Extension -in @('.md', '.bat', '.ps1', '.txt', '.in', '.yml', '.yaml') } |
+    Where-Object {
+        $_.FullName -notmatch '[\\/](runtime|Results|dist)[\\/]' -and
+        $_.FullName -notmatch '[\\/](THIRD_PARTY_NOTICES\.md|LICENSE\.txt|validate\.ps1|sync-upstream-ipset\.ps1)$' -and
+        $_.Extension -in @('.md', '.bat', '.ps1', '.txt', '.in', '.yml', '.yaml')
+    } |
     Select-String -Pattern 'Flowseal|zapret-discord-youtube|vpndiscordyooutube|bypassblock|zapretvpns' -CaseSensitive:$false
 foreach ($hit in $forbidden) {
     Add-ValidationError "Forbidden branding in $($hit.Path):$($hit.LineNumber)"
@@ -742,5 +884,6 @@ if ($errors.Count -gt 0) {
     exit 1
 }
 Write-Host "Validation passed: $($presets.Count) presets, $renderCount configurations (Game: $($gameModes -join ', '); IPSet: $($ipsetModes -join ', '); Voice: $($voiceModes -join ', '))." -ForegroundColor Green
+Write-Host "UDP fake selector combinations inspected: $fakeRenderCount." -ForegroundColor Green
 Write-Host ('CUSTOM static candidates inspected: ' + $customStaticCount) -ForegroundColor DarkGray
 exit 0

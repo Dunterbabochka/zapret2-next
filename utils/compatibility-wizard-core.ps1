@@ -187,6 +187,8 @@ function Get-UserStateHashes {
         'utils\game_filter.mode',
         'utils\ipset_filter.mode',
         'utils\voice_filter.mode',
+        'utils\discord_fake.mode',
+        'utils\game_fake.mode',
         'lists\ipset-all.txt'
     )
     $state = [ordered]@{}

@@ -10,7 +10,9 @@ Source: https://github.com/bol-van/zapret2
 
 The `winws2.exe` binary, official Lua libraries, filter examples and fake payload files in this distribution originate from Zapret 2 v1.0.2.
 
-The additional `quic_initial_dbankcloud_ru.bin` and `tls_clienthello_max_ru.bin` payloads are retained from the MIT-licensed Windows bundle identified below for ALT12 compatibility. The new `tls_clienthello_max_ru.bin` was copied from the local Flowseal reference snapshot ../Zapret 1 FORK FlowSeal/bin/tls_clienthello_max_ru.bin on 2026-07-15; its SHA256 is 4EE0870ABE0A0128600B0095189987BA1D210DAE8BF963BC725AFF49CF922624.
+The additional `quic_initial_dbankcloud_ru.bin` and `tls_clienthello_max_ru.bin` payloads are retained from the MIT-licensed Windows bundle identified below for ALT12 compatibility. The `tls_clienthello_max_ru.bin` file was copied from the local Flowseal reference snapshot on 2026-07-15; its SHA256 is 4EE0870ABE0A0128600B0095189987BA1D210DAE8BF963BC725AFF49CF922624.
+
+The opt-in UDP fake selector also includes two payloads copied from the local Flowseal 1.10.1 reference snapshot on 2026-08-16. They remain disabled by default: `quic_initial_steamcommunity_com.bin` (SHA256 `2FE18B3BD20807D36704D0B072092EE49AE84EDCA907A4420AB9A0F0F28FDDCF`) and `quic_initial_dbankcloud_ru_v2.bin` (SHA256 `E065870CB0D13152E6132807BBF42218A9E7CD8D96F5602B61674CC540F3A56E`).
 
 ## Reused Windows bundle code
 
