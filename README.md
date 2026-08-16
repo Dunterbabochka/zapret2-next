@@ -113,7 +113,7 @@
 compatibility wizard.bat
 ```
 
-Wizard проведёт локальную проверку и предложит наиболее подходящую комбинацию. Подробнее: [Compatibility Wizard](#-compatibility-wizard).
+Wizard проведёт локальную проверку и предложит наиболее подходящую комбинацию. Подробнее: [Compatibility Wizard](#compatibility-wizard).
 
 ### Вариант 3 — установить как службу
 
@@ -131,11 +131,11 @@ service.bat
 
 ## Бета-тестирование
 
-Бета-канал — добровольная проверка будущей версии до стабильного релиза. Beta публикуется как обычный GitHub **Pre-release** и не заменяет последнюю стабильную версию.
+Бета-канал — добровольная проверка будущей версии до стабильного релиза. Бета-версия публикуется как обычный GitHub **Pre-release** и не заменяет последнюю стабильную версию.
 
 ### Как принять участие
 
-1. Откройте [все Releases](https://github.com/Dunterbabochka/zapret2-next/releases) и выберите версию с пометкой **Pre-release**, например `v0.2.0-beta.1`.
+1. Откройте [все Releases](https://github.com/Dunterbabochka/zapret2-next/releases) и выберите версию с пометкой **Pre-release**, например `v0.4.0-beta.1`.
 2. Скачайте `zapret2-next-vX.Y.Z-beta.N.zip` и `release-sha256.txt`. Не скачивайте автоматически созданный **Source code ZIP**.
 3. [Сверьте SHA256](#проверка-sha256) и распакуйте beta в отдельную папку. Не копируйте её поверх стабильной установки.
 4. Запустите `START BETA TEST.bat` от имени администратора и пройдите Compatibility Wizard.
@@ -152,8 +152,8 @@ service.bat
 Владельцу проекта достаточно создать и отправить prerelease-тег:
 
 ```powershell
-git tag v0.2.0-beta.1
-git push origin v0.2.0-beta.1
+git tag -a v0.4.0-beta.1 -m "Zapret 2 NEXT v0.4.0-beta.1"
+git push origin v0.4.0-beta.1
 ```
 
 Теги с суффиксом `-alpha`, `-beta` или `-rc` автоматически:
@@ -537,7 +537,7 @@ Release этот скрипт не включается.
 
 ## Сообщения об ошибках и результаты тестов
 
-Для prerelease-версии используйте отдельную форму [Beta report](https://github.com/Dunterbabochka/zapret2-next/issues/new?template=beta-report.yml). Для стабильной версии используйте шаблон Strategy compatibility report.
+Для prerelease-версии используйте отдельную форму [Beta report](https://github.com/Dunterbabochka/zapret2-next/issues/new?template=beta-report.yml). Для стабильной версии используйте [Strategy compatibility report](https://github.com/Dunterbabochka/zapret2-next/issues/new?template=strategy-report.yml).
 
 В отчёте укажите:
 
@@ -605,4 +605,4 @@ Release этот скрипт не включается.
 
 Zapret 2 NEXT is an independent Windows 10/11 x64 bundle built around the official Zapret 2 `winws2` engine and Lua API. It provides ready-to-use launchers, a local Compatibility Wizard, Windows service management, Game/IPSet/Discord Voice modes, diagnostics, validation and reproducible release tooling.
 
-Download only the project release archive, verify SHA256, and remember that strategy effectiveness varies by provider and network.Opt-in beta testing is distributed through GitHub Pre-releases with a separate diagnostic launcher and issue form.
+Download only the project release archive, verify SHA256, and remember that strategy effectiveness varies by provider and network. Opt-in beta testing is distributed through GitHub Pre-releases with a separate diagnostic launcher and issue form.
