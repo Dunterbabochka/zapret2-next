@@ -33,4 +33,9 @@ if ($SimulationScenario) {
     return
 }
 
-Invoke-CompatibilityWizard
+try {
+    Invoke-CompatibilityWizard
+} catch [OperationCanceledException] {
+    Write-Host "Canceled by user: $($_.Exception.Message)" -ForegroundColor Yellow
+    exit 2
+}

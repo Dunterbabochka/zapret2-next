@@ -357,8 +357,24 @@ function Stop-PktMonCapture {
             $script:pktMonOwned = $false
         }
         if (Test-Path -LiteralPath $state.EtlPath -PathType Leaf) {
-            & pktmon.exe etl2txt $state.EtlPath --out $state.AllMetadataPath --brief --timestamp 2>&1 | Out-Null
-            & pktmon.exe etl2txt $state.EtlPath --stats 2>&1 | Out-File -LiteralPath $state.StatsPath -Encoding utf8
+            $previousErrorAction = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $conversionOutput = @(& pktmon.exe etl2txt $state.EtlPath --out $state.AllMetadataPath --brief 2>&1)
+                $conversionExitCode = $LASTEXITCODE
+                $statsOutput = @(& pktmon.exe etl2txt $state.EtlPath --stats-only 2>&1)
+                $statsExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $previousErrorAction
+            }
+            if ($conversionExitCode -ne 0) {
+                Write-Warning "PktMon metadata conversion failed: $(($conversionOutput | Out-String).Trim())"
+            }
+            if ($statsExitCode -eq 0) {
+                $statsOutput | Out-File -LiteralPath $state.StatsPath -Encoding utf8
+            } else {
+                Write-Warning "PktMon statistics conversion failed: $(($statsOutput | Out-String).Trim())"
+            }
         }
         $matching = @()
         if ((Test-Path -LiteralPath $state.AllMetadataPath -PathType Leaf) -and $DiscordLocalPorts.Count) {

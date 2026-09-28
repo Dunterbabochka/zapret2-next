@@ -273,8 +273,8 @@ try {
         $winwsProcess.WaitForExit()
     }
 
-    & pktmon etl2txt $etlPath --out $packetText --brief --timestamp 2>&1 | Out-Null
-    & pktmon etl2txt $etlPath --stats 2>&1 | Out-File -LiteralPath $statsText -Encoding utf8
+    & pktmon etl2txt $etlPath --out $packetText --brief 2>&1 | Out-Null
+    & pktmon etl2txt $etlPath --stats-only 2>&1 | Out-File -LiteralPath $statsText -Encoding utf8
 
     $voiceLines = @()
     if ((Test-Path -LiteralPath $packetText) -and $localPorts.Count -gt 0) {

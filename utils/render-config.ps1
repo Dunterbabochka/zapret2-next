@@ -33,6 +33,7 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $presetPath = Join-Path $root ("presets\{0}.txt.in" -f $Preset)
 $basePath = Join-Path $root 'presets\_base.txt.in'
 $profilesPath = Join-Path $root 'presets\_profiles.txt.in'
+& (Join-Path $PSScriptRoot 'ensure-user-lists.ps1') -Root $root
 
 foreach ($path in @($presetPath, $basePath, $profilesPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -283,5 +284,5 @@ $outputDir = Split-Path -Parent $outputPath
 if (-not (Test-Path -LiteralPath $outputDir)) {
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 }
-[IO.File]::WriteAllText($outputPath, $content.Trim() + "`r`n", [Text.Encoding]::ASCII)
+[IO.File]::WriteAllText($outputPath, $content.Trim() + "`r`n", [Text.UTF8Encoding]::new($false))
 Write-Output $outputPath

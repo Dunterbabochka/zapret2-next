@@ -19,6 +19,10 @@ $logBase = [IO.Path]::GetFullPath($LogPrefix)
 $stdoutLog = $logBase + '.stdout.log'
 $stderrLog = $logBase + '.stderr.log'
 
+if ($root -match '[^\x00-\x7F]') {
+    Write-Host '[WARN] Installation path contains non-ASCII characters. If winws2 reports chdir, move the bundle to C:\zapret2-next.' -ForegroundColor Yellow
+}
+
 function Show-EngineLog {
     $printed = $false
     foreach ($path in @($stderrLog, $stdoutLog)) {

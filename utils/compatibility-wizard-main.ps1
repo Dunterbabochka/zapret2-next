@@ -435,6 +435,7 @@ function Invoke-CompatibilityWizard {
     } catch [OperationCanceledException] {
         $script:result.status = 'canceled'
         $script:result.errors += $_.Exception.Message
+        Write-Host "Canceled by user: $($_.Exception.Message)" -ForegroundColor Yellow
         $exitCode = 2
     } catch {
         $script:result.status = 'failed'

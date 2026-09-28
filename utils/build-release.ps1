@@ -39,6 +39,11 @@ $topFiles = @(
 $dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
 foreach ($dir in $dirs) { Copy-Item (Join-Path $root $dir) (Join-Path $stage $dir) -Recurse -Force }
+# Never publish the maintainer's local, ignored user lists in a release.
+foreach ($name in @('list-general-user.txt', 'list-exclude-user.txt', 'ipset-exclude-user.txt')) {
+    Remove-Item -LiteralPath (Join-Path $stage "lists\$name") -Force -ErrorAction SilentlyContinue
+}
+& (Join-Path $stage 'utils\ensure-user-lists.ps1') -Root $stage
 [IO.File]::WriteAllText((Join-Path $stage '.service\version.txt'), "$Version`r`n", [Text.Encoding]::ASCII)
 
 if ($Beta) {
