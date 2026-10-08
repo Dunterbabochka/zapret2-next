@@ -12,6 +12,15 @@ jobs:
       - name: Validate templates and release policy
         shell: pwsh
         run: ./utils/validate.ps1
+      - name: Validate update and service rollback on Windows PowerShell 5.1
+        shell: powershell
+        run: ./utils/validate-stability.ps1
+      - name: Validate compatibility wizard and failure simulations
+        shell: powershell
+        run: |
+          ./utils/validate-wizard.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./utils/compatibility-wizard.ps1 -SelfTest
       - name: Verify pinned runtime hashes
         shell: pwsh
         run: |

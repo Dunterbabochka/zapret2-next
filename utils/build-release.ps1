@@ -26,8 +26,21 @@ if (-not $Beta -and $sourceVersion -ne $Version) {
     throw "Stable release version '$Version' does not match .service\version.txt ('$sourceVersion'). Update the version file before building."
 }
 
-if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-if (Test-Path $zip) { Remove-Item $zip -Force }
+$stage = [IO.Path]::GetFullPath($stage)
+$out = [IO.Path]::GetFullPath($out)
+# Check resolved deletion targets before replacing an earlier build.
+if (-not $stage.StartsWith($out.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or
+    $root.StartsWith($stage.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or $stage -eq $root) {
+    throw 'Release staging directory must remain inside the output directory and outside the source checkout.'
+}
+foreach ($sourceDir in @('bin','lua','lists','presets','utils','windivert.filter','.service')) {
+    $sourcePath = (Join-Path $root $sourceDir).TrimEnd('\')
+    if ($out -eq $sourcePath -or $out.StartsWith($sourcePath + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'OutputDirectory cannot be inside a packaged source directory.'
+    }
+}
+if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 $topFiles = @(
@@ -38,7 +51,24 @@ $topFiles = @(
 )
 $dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
-foreach ($dir in $dirs) { Copy-Item (Join-Path $root $dir) (Join-Path $stage $dir) -Recurse -Force }
+$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'CUSTOM-PRESETS.md')
+New-Item -ItemType Directory -Path (Join-Path $stage 'docs') -Force | Out-Null
+foreach ($document in $publicDocs) {
+    Copy-Item -LiteralPath (Join-Path $root ('docs\' + $document)) -Destination (Join-Path $stage 'docs') -Force
+}
+foreach ($dir in $dirs) {
+    $sourceDir = Join-Path $root $dir
+    foreach ($file in Get-ChildItem -LiteralPath $sourceDir -Recurse -File -Force) {
+        if ($file.Name -match '\.(?:backup|bak|tmp|old|orig|swp|download|lock|log)$' -or
+            $file.Name -in @('list-general-user.txt','list-exclude-user.txt','ipset-exclude-user.txt')) { continue }
+        $relative = $file.FullName.Substring($root.Length + 1)
+        $target = Join-Path $stage $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+    }
+}
+# Always ship the bundled snapshot, not the maintainer's mutable loaded list.
+Copy-Item -LiteralPath (Join-Path $stage '.service\ipset-service.txt') -Destination (Join-Path $stage 'lists\ipset-all.txt') -Force
 # Never publish the maintainer's local, ignored user lists in a release.
 foreach ($name in @('list-general-user.txt', 'list-exclude-user.txt', 'ipset-exclude-user.txt')) {
     Remove-Item -LiteralPath (Join-Path $stage "lists\$name") -Force -ErrorAction SilentlyContinue

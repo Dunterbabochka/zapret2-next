@@ -35,7 +35,7 @@ echo   -----------------------------------------------
 echo.
 echo   :: SERVICE
 echo      1. Install Service
-echo      2. Remove Services
+echo      2. Remove Service
 echo      3. Check Status
 echo.
 echo   :: SETTINGS
@@ -93,20 +93,6 @@ exit /b
 set "SERVICE_STATUS=not installed"
 for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "$service = Get-Service -Name '%SERVICE_NAME%' -ErrorAction SilentlyContinue; if ($service) { $service.Status.ToString() }" 2^>nul`) do set "SERVICE_STATUS=%%S"
 exit /b
-
-:wait_for_service_status
-set "WAIT_TARGET=%~1"
-set /a WAIT_RETRIES=0
-:wait_for_service_status_loop
-call :get_service_status
-if /I "!SERVICE_STATUS!"=="!WAIT_TARGET!" exit /b 0
-set /a WAIT_RETRIES+=1
-if !WAIT_RETRIES! GEQ 15 (
-  call :red "Service did not reach !WAIT_TARGET! state (current: !SERVICE_STATUS!)."
-  exit /b 1
-)
-timeout /t 1 /nobreak >nul
-goto wait_for_service_status_loop
 
 :read_ipset_mode
 set "IPSET_MODE=loaded"
@@ -173,37 +159,14 @@ echo   UDP fakes: Discord=!DISCORD_FAKE!   Game=!GAME_FAKE!
 set "confirm="
 set /p "confirm=Install this service configuration? [Y/n]: "
 if /I "!confirm!"=="N" goto menu
-set "SERVICE_CONFIG=%ROOT%\runtime\service.txt"
 set "RENDER_IPSET_MODE=!IPSET_MODE!"
 if /I "!RENDER_IPSET_MODE!"=="any" (
   set "RENDER_IPSET_MODE=loaded"
   call :yellow "IPSet any is diagnostic-only; service installation will use loaded."
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "!SELECTED!" -Output "!SERVICE_CONFIG!" -IPSetMode "!RENDER_IPSET_MODE!"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-service.ps1" -Action Install -Preset "!SELECTED!" -IPSetMode "!RENDER_IPSET_MODE!"
 if errorlevel 1 (
-  call :red "Failed to render service config."
-  pause
-  goto menu
-)
-sc stop "%SERVICE_NAME%" >nul 2>&1
-timeout /t 1 /nobreak >nul
-sc delete "%SERVICE_NAME%" >nul 2>&1
-timeout /t 1 /nobreak >nul
-set "IMAGE_PATH=\"%ROOT%\bin\winws2.exe\" @\"!SERVICE_CONFIG!\""
-sc create "%SERVICE_NAME%" binPath= "!IMAGE_PATH!" DisplayName= "Zapret 2 NEXT" start= auto
-if errorlevel 1 (
-  call :red "Failed to create the winws2 service."
-  pause
-  goto menu
-)
-sc description "%SERVICE_NAME%" "Zapret 2 NEXT DPI bypass service powered by Zapret 2"
-reg add "%STATE_KEY%" /v Zapret2NextStrategy /t REG_SZ /d "!SELECTED!" /f >nul
-sc start "%SERVICE_NAME%"
-if errorlevel 1 (
-  call :yellow "Service was installed but did not start. See the SC error above and run Diagnostics."
-) else (
-  call :wait_for_service_status Running
-  if errorlevel 1 call :yellow "Service start did not reach Running. Run Diagnostics."
+  call :red "Service configuration failed; see the error above."
 )
 pause
 goto menu
@@ -216,16 +179,8 @@ goto menu
 :remove_service
 cls
 echo Stopping Zapret 2 NEXT...
-sc stop "%SERVICE_NAME%" >nul 2>&1
-taskkill /F /IM winws2.exe >nul 2>&1
-timeout /t 1 /nobreak >nul
-sc delete "%SERVICE_NAME%" >nul 2>&1
-for %%S in (WinDivert WinDivert14) do (
-  sc stop "%%S" >nul 2>&1
-  sc delete "%%S" >nul 2>&1
-)
-del /q "%ROOT%\runtime\service.txt" >nul 2>&1
-call :green "Service and WinDivert registrations removed."
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-service.ps1" -Action Remove
+if errorlevel 1 call :red "Service removal failed; see the error above."
 pause
 goto menu
 
@@ -252,6 +207,7 @@ goto menu
 
 :game_filter
 cls
+set "newmode="
 echo Select game filter mode:
 echo   0. Off
 echo   1. TCP and UDP
@@ -496,32 +452,17 @@ if /I "!RENDER_IPSET_MODE!"=="any" (
   set "RENDER_IPSET_MODE=loaded"
   call :yellow "IPSet any is diagnostic-only; service refresh will use loaded."
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\render-config.ps1" -Preset "!ACTIVE!" -Output "%ROOT%\runtime\service.txt" -IPSetMode "!RENDER_IPSET_MODE!"
-if errorlevel 1 (
-  call :red "Failed to regenerate service config."
-  exit /b 1
-)
 set "restart="
 set /p "restart=Restart the service now? [Y/n]: "
-if /I "!restart!"=="N" exit /b 0
-call :get_service_status
-if /I "!SERVICE_STATUS!"=="Stopped" goto refresh_start_service
-sc stop "%SERVICE_NAME%"
-if errorlevel 1 (
-  call :red "Service stop command failed. See the SC error above."
-  exit /b 1
-)
-call :wait_for_service_status Stopped
+set "RESTART_FLAG=-Restart"
+if /I "!restart!"=="N" set "RESTART_FLAG="
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-service.ps1" -Action Refresh -Preset "!ACTIVE!" -IPSetMode "!RENDER_IPSET_MODE!" !RESTART_FLAG!
 if errorlevel 1 exit /b 1
-:refresh_start_service
-sc start "%SERVICE_NAME%"
-if errorlevel 1 (
-  call :red "Service start command failed. See the SC error above."
-  exit /b 1
+if /I "!restart!"=="N" (
+  call :yellow "Validated configuration saved; it will apply on the next service start."
+) else (
+  call :green "Service restarted."
 )
-call :wait_for_service_status Running
-if errorlevel 1 exit /b 1
-call :green "Service restarted."
 exit /b
 
 :repository_ready

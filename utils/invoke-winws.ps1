@@ -7,6 +7,11 @@ param(
 
     [switch]$Validate,
 
+    [switch]$ReplaceExisting,
+
+    [ValidateRange(1, 120)]
+    [int]$ValidationTimeoutSeconds = 30,
+
     [ValidateRange(1, 30)]
     [int]$StartupWaitSeconds = 3
 )
@@ -56,18 +61,54 @@ $logDir = Split-Path -Parent $logBase
 if (-not (Test-Path -LiteralPath $logDir)) {
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 }
-Remove-Item -LiteralPath $stdoutLog, $stderrLog -Force -ErrorAction SilentlyContinue
+
+$launchLock = $null
+if (-not $Validate) {
+    try {
+        $launchLock = [IO.File]::Open((Join-Path $root 'runtime\engine-operation.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+        $services = @(Get-CimInstance Win32_Service -Filter "Name='winws2' OR Name='zapret'" -ErrorAction Stop)
+        if (@($services | Where-Object { $_.State -ne 'Stopped' }).Count) {
+            throw 'A Zapret service is active. Stop it before a manual launch.'
+        }
+        $existing = @(Get-CimInstance Win32_Process -Filter "Name='winws2.exe' OR Name='winws.exe'" -ErrorAction Stop)
+        foreach ($engine in $existing) {
+            if (-not $ReplaceExisting -or $engine.ExecutablePath -ne $winws) {
+                throw 'Another winws process is running. Stop its bundle before starting this one.'
+            }
+        }
+        foreach ($engine in $existing) {
+            Stop-Process -Id $engine.ProcessId -Force -ErrorAction Stop
+            $oldProcess = Get-Process -Id $engine.ProcessId -ErrorAction SilentlyContinue
+            if ($oldProcess -and -not $oldProcess.WaitForExit(5000)) { throw 'Previous winws2 process did not stop.' }
+        }
+    } catch {
+        if ($launchLock) { $launchLock.Dispose() }
+        Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
+        exit 15
+    }
+}
 
 $argument = '@"' + $configPath + '"'
 try {
+    Remove-Item -LiteralPath $stdoutLog, $stderrLog -Force -ErrorAction SilentlyContinue
     $process = Start-Process -FilePath $winws -ArgumentList $argument -WorkingDirectory (Split-Path -Parent $winws) -WindowStyle Hidden -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
+    # Retain the process handle so Windows PowerShell keeps the exit code.
+    $null = $process.Handle
 } catch {
+    if ($launchLock) { $launchLock.Dispose() }
     Write-Host "[ERROR] Could not launch winws2: $($_.Exception.Message)" -ForegroundColor Red
     Show-EngineLog
     exit 12
 }
 
 if ($Validate) {
+    if (-not $process.WaitForExit($ValidationTimeoutSeconds * 1000)) {
+        $process.Kill()
+        $process.WaitForExit()
+        Write-Host "[ERROR] Config validation timed out after $ValidationTimeoutSeconds seconds." -ForegroundColor Red
+        Show-EngineLog
+        exit 16
+    }
     $process.WaitForExit()
     $process.Refresh()
     $engineExitCode = try { $process.ExitCode } catch { $null }
@@ -89,6 +130,7 @@ if ($Validate) {
 
 Start-Sleep -Seconds $StartupWaitSeconds
 $process.Refresh()
+if ($launchLock) { $launchLock.Dispose() }
 if ($process.HasExited) {
     $process.WaitForExit()
     $process.Refresh()

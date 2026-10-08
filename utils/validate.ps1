@@ -104,9 +104,13 @@ if ($serviceContent -notmatch 'Select option \(0-14\):' -or
 }
 if ($serviceContent -notmatch ':get_service_status' -or
     $serviceContent -notmatch 'Get-Service -Name' -or
-    $serviceContent -notmatch 'call :wait_for_service_status Stopped' -or
-    $serviceContent -notmatch 'call :wait_for_service_status Running') {
+    $serviceContent -notmatch 'manage-service\.ps1') {
     Add-ValidationError 'The service manager must use locale-independent status reads and wait for stop/start transitions.'
+}
+foreach ($helper in @('ipset-utils.ps1', 'service-control.ps1', 'manage-service.ps1', 'validate-stability.ps1')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $helper) -PathType Leaf)) {
+        Add-ValidationError "Missing stability helper: $helper"
+    }
 }
 if ($serviceContent -notmatch '(?m)^start "Zapret 2 NEXT tests" powershell -NoExit ') {
     Add-ValidationError 'The test console must stay open so failures remain visible.'

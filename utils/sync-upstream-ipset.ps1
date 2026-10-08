@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'ipset-utils.ps1')
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if (-not $ReportDirectory) {
     $ReportDirectory = Join-Path $root ('runtime\ipset-sync\' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -18,31 +19,8 @@ $serviceDestination = Join-Path $root '.service\ipset-service.txt'
 $listDestination = Join-Path $root 'lists\ipset-all.txt'
 
 function Get-ValidatedIPSet([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "IPSet not found: $Path" }
-    $entries = [Collections.Generic.List[string]]::new()
-    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    $lineNumber = 0
-    foreach ($line in Get-Content -LiteralPath $Path) {
-        $lineNumber++
-        $entry = ([string]$line).Trim()
-        if (-not $entry -or $entry.StartsWith('#')) { continue }
-        $parts = $entry.Split('/', 2)
-        $address = $null
-        if (-not [Net.IPAddress]::TryParse($parts[0], [ref]$address)) {
-            throw "Invalid IP address at line $lineNumber`: $entry"
-        }
-        if ($parts.Count -eq 2) {
-            $prefix = 0
-            $maximum = if ($address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork) { 32 } else { 128 }
-            if (-not [int]::TryParse($parts[1], [ref]$prefix) -or $prefix -lt 0 -or $prefix -gt $maximum) {
-                throw "Invalid CIDR prefix at line $lineNumber`: $entry"
-            }
-        }
-        if (-not $seen.Add($entry)) { throw "Duplicate IPSet entry at line $lineNumber`: $entry" }
-        $entries.Add($entry)
-    }
-    if ($entries.Count -lt 1000) { throw "IPSet contains only $($entries.Count) entries; refusing a suspiciously small snapshot." }
-    return $entries
+    # Refuse a suspiciously small snapshot in both update entry points.
+    Read-ValidatedIPSet -Path $Path -MinimumEntries 1000
 }
 
 $sourceLabel = $null
@@ -61,6 +39,7 @@ $current = if (Test-Path -LiteralPath $serviceDestination -PathType Leaf) {
 } else {
     @()
 }
+Assert-IPSetSize $candidate.Count $current.Count
 $candidateSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $currentSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($entry in $candidate) { [void]$candidateSet.Add($entry) }
@@ -79,7 +58,7 @@ $summary = @(
     "Added: $($added.Count)"
     "Removed: $($removed.Count)"
     "Candidate SHA256: $((Get-FileHash -LiteralPath $candidatePath -Algorithm SHA256).Hash)"
-    "Applied: $($Apply.IsPresent)"
+    'Applied: False'
 )
 [IO.File]::WriteAllLines((Join-Path $reportRoot 'SUMMARY.txt'), $summary, [Text.Encoding]::UTF8)
 
@@ -93,32 +72,41 @@ if (-not $Apply) {
 $normalized = ($candidate -join "`r`n") + "`r`n"
 $destinations = @($serviceDestination, $listDestination)
 $original = @{}
-$temporary = @{}
+$locks = [Collections.Generic.List[IO.FileStream]]::new()
+$applied = [Collections.Generic.List[string]]::new()
 try {
+    # Acquire both locks before capturing originals or writing either file.
     foreach ($destination in $destinations) {
-        $original[$destination] = if (Test-Path -LiteralPath $destination -PathType Leaf) {
-            [IO.File]::ReadAllBytes($destination)
-        } else {
-            $null
-        }
-        $temporary[$destination] = $destination + '.download'
-        [IO.File]::WriteAllText($temporary[$destination], $normalized, [Text.Encoding]::ASCII)
-        [void](Get-ValidatedIPSet $temporary[$destination])
+        $locks.Add([IO.File]::Open($destination + '.lock', 'OpenOrCreate', 'ReadWrite', 'None'))
     }
     foreach ($destination in $destinations) {
-        Move-Item -LiteralPath $temporary[$destination] -Destination $destination -Force
+        $original[$destination] = $null
+        if (Test-Path -LiteralPath $destination -PathType Leaf) {
+            $original[$destination] = [IO.File]::ReadAllBytes($destination)
+        }
+        if ($null -ne $original[$destination]) {
+            $oldCount = @(Get-Content -LiteralPath $destination | Where-Object { $_ -notmatch '^\s*(?:#|$)' }).Count
+            Assert-IPSetSize $candidate.Count $oldCount
+        }
+    }
+    foreach ($destination in $destinations) {
+        Write-AtomicTextFile -Path $destination -Content $normalized
+        $applied.Add($destination)
     }
 } catch {
-    foreach ($destination in $destinations) {
-        Remove-Item -LiteralPath ($destination + '.download') -Force -ErrorAction SilentlyContinue
+    foreach ($destination in $applied) {
         if ($null -ne $original[$destination]) {
-            [IO.File]::WriteAllBytes($destination, $original[$destination])
+            Write-AtomicFileBytes -Path $destination -Bytes $original[$destination]
         } elseif (Test-Path -LiteralPath $destination) {
             Remove-Item -LiteralPath $destination -Force
         }
     }
     throw "IPSet apply failed and original files were restored: $($_.Exception.Message)"
+} finally {
+    foreach ($heldLock in $locks) { $heldLock.Dispose() }
 }
 
 Write-Host '[OK] Updated .service\ipset-service.txt and lists\ipset-all.txt.' -ForegroundColor Green
+$summary[-1] = 'Applied: True'
+[IO.File]::WriteAllLines((Join-Path $reportRoot 'SUMMARY.txt'), $summary, [Text.Encoding]::UTF8)
 exit 0

@@ -21,6 +21,11 @@ Copyright (c) 2024-2026 Flowseal
 
 Portions of the Windows menu, diagnostics and testing workflow were adapted under the MIT License. The original MIT copyright and permission notice is preserved by this notice and the accompanying license text.
 
+On 2026-10-02, the local Flowseal 1.10.3 reference was compared with this bundle.
+The `zendesk.com` and `live-video.net` hostlist entries were carried over while
+preserving this project's existing entries. No additional engine binary or
+Zapret 1 command-line preset was imported during that comparison.
+
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights

@@ -68,8 +68,7 @@ if errorlevel 1 (
   exit /b 6
 )
 
-taskkill /F /IM winws2.exe >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\invoke-winws.ps1" -Config "%CONFIG%" -LogPrefix "%LOG_PREFIX%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\invoke-winws.ps1" -Config "%CONFIG%" -LogPrefix "%LOG_PREFIX%" -ReplaceExisting
 if errorlevel 1 (
   echo [ERROR] winws2 failed to start. The engine output and log paths are shown above.
   pause

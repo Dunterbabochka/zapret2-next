@@ -35,6 +35,7 @@ lists/ipset-all.txt.backup
 *.orig
 *.swp
 *.download
+*.lock
 
 # Секреты
 .env

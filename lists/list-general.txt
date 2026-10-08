@@ -47,3 +47,5 @@ betterttv.net
 7tv.io
 localizeapi.com
 klipy.com
+zendesk.com
+live-video.net
