@@ -23,6 +23,8 @@ if errorlevel 1 (
   exit /b
 )
 
+mode con: cols=110 lines=40 >nul 2>&1
+
 :menu
 cls
 call :read_status
@@ -35,30 +37,30 @@ echo   Telegram: !TELEGRAM_STATUS!
 echo   -----------------------------------------------
 echo.
 echo   :: SERVICE
-echo      1. Install Service
-echo      2. Remove Service
-echo      3. Check Status
+echo       1. Install Service
+echo       2. Remove Service
+echo       3. Check Status
 echo.
 echo   :: SETTINGS
-echo      4. Game Filter         [!GAME_MODE!]
-echo      5. IPSet Filter        [!IPSET_MODE!]
-echo      6. Auto-Update Check   [!UPDATE_MODE!]
-echo      12. Discord Voice      [!VOICE_MODE!]
-echo      13. UDP Fake Profiles [D:!DISCORD_FAKE! / G:!GAME_FAKE!]
-echo      15. Telegram          [!TELEGRAM_STATUS!]
+echo       4. Game Filter         [!GAME_MODE!]
+echo       5. IPSet Filter        [!IPSET_MODE!]
+echo       6. Auto-Update Check   [!UPDATE_MODE!]
+echo       7. Discord Voice       [!VOICE_MODE!]
+echo       8. UDP Fake Profiles   [D:!DISCORD_FAKE! / G:!GAME_FAKE!]
+echo       9. Telegram            [!TELEGRAM_STATUS!]
 echo.
 echo   :: UPDATES
-echo      7. Update IPSet List
-echo      8. Update Hosts File
-echo      9. Check for Updates
+echo      10. Update IPSet List
+echo      11. Update Hosts File
+echo      12. Check for Updates
 echo.
 echo   :: TOOLS
-echo      10. Run Diagnostics
-echo      11. Run Tests
-echo      14. Clear Discord Cache
+echo      13. Run Diagnostics
+echo      14. Run Tests
+echo      15. Clear Discord Cache
 echo.
 echo   -----------------------------------------------
-echo      0. Exit
+echo       0. Exit
 echo.
 set "choice="
 set /p "choice=   Select option (0-15): "
@@ -68,15 +70,15 @@ if "!choice!"=="3" goto show_status
 if "!choice!"=="4" goto game_filter
 if "!choice!"=="5" goto ipset_filter
 if "!choice!"=="6" goto update_toggle
-if "!choice!"=="7" goto update_ipset
-if "!choice!"=="8" goto update_hosts
-if "!choice!"=="9" goto manual_update_check
-if "!choice!"=="10" goto diagnostics
-if "!choice!"=="11" goto tests
-if "!choice!"=="12" goto voice_filter
-if "!choice!"=="13" goto fake_profiles
-if "!choice!"=="14" goto clear_discord_cache
-if "!choice!"=="15" goto telegram
+if "!choice!"=="7" goto voice_filter
+if "!choice!"=="8" goto fake_profiles
+if "!choice!"=="9" goto telegram
+if "!choice!"=="10" goto update_ipset
+if "!choice!"=="11" goto update_hosts
+if "!choice!"=="12" goto manual_update_check
+if "!choice!"=="13" goto diagnostics
+if "!choice!"=="14" goto tests
+if "!choice!"=="15" goto clear_discord_cache
 if "!choice!"=="0" exit /b 0
 goto menu
 

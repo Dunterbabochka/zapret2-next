@@ -257,8 +257,8 @@ $content = $content.Replace('{{DEBUG}}', $debugValue)
 $rootDir = $root.Replace('\', '/')
 $binDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
 
-# winws2 v1.0.2 does not reliably apply --chdir before every file-valued
-# Windows option. Emit quoted absolute paths while keeping templates readable.
+# Emit quoted absolute paths for file-valued Windows options instead of
+# depending on when winws2 applies --chdir. Keep templates readable.
 $content = [regex]::Replace($content, '(?m)=@\.\./(lua|windivert\.filter)/([^\r\n]+)(?=\r?$)', '=@"{{ROOT_DIR}}/$1/$2"')
 $content = [regex]::Replace($content, '(?m):@fake/([^\r\n]+)(?=\r?$)', ':@"{{BIN_DIR}}/fake/$1"')
 $content = [regex]::Replace($content, '(?m)=\.\./lists/([^\r\n]+)(?=\r?$)', '="{{ROOT_DIR}}/lists/$1"')

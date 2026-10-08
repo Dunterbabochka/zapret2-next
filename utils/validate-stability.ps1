@@ -209,3 +209,6 @@ public class FixtureEngine {
         Remove-Item -LiteralPath $resolved -Recurse -Force
     }
 }
+
+# Expected native failures were asserted above; return the successful suite result.
+exit 0

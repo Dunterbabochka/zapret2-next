@@ -87,12 +87,12 @@ if ($releaseBuilderAvailable -and ($buildReleaseContent -notmatch 'Join-Path \$s
     $buildReleaseContent -notmatch 'Stable release version')) {
     Add-ValidationError 'build-release.ps1 must stamp the requested version and reject mismatched stable releases.'
 }
-if ($serviceContent -notmatch '(?m)^echo {6}10\. Run Diagnostics\r?$' -or
-    $serviceContent -notmatch '(?m)^echo {6}11\. Run Tests\r?$' -or
-    $serviceContent -notmatch '(?m)^echo {6}12\. Discord Voice' -or
-    $serviceContent -notmatch '(?m)^echo {6}13\. UDP Fake Profiles' -or
-    $serviceContent -notmatch '(?m)^echo {6}14\. Clear Discord Cache') {
-    Add-ValidationError 'The two-digit service menu items are not aligned or a required settings/tool item is missing.'
+if ($serviceContent -notmatch '(?m)^echo {6}13\. Run Diagnostics\r?$' -or
+    $serviceContent -notmatch '(?m)^echo {6}14\. Run Tests\r?$' -or
+    $serviceContent -notmatch '(?m)^echo {7}7\. Discord Voice' -or
+    $serviceContent -notmatch '(?m)^echo {7}8\. UDP Fake Profiles' -or
+    $serviceContent -notmatch '(?m)^echo {6}15\. Clear Discord Cache') {
+    Add-ValidationError 'The service menu items are not aligned or a required settings/tool item is missing.'
 }
 if ($serviceContent -notmatch 'Select option \(0-15\):' -or
     $serviceContent -notmatch 'goto voice_filter' -or
@@ -102,7 +102,7 @@ if ($serviceContent -notmatch 'Select option \(0-15\):' -or
     $serviceContent -notmatch 'UDP fakes: Discord=!DISCORD_FAKE!   Game=!GAME_FAKE!') {
     Add-ValidationError 'The service menu must expose the combined configuration, UDP fake selector and cache cleanup.'
 }
-if ($serviceContent -notmatch '(?m)^echo {6}15\. Telegram' -or
+if ($serviceContent -notmatch '(?m)^echo {7}9\. Telegram' -or
     $serviceContent -notmatch 'goto telegram' -or
     $serviceContent -notmatch 'manage-telegram\.ps1') {
     Add-ValidationError 'The service menu must expose the bundled Telegram module.'
@@ -895,6 +895,8 @@ $sourceFiles = @(Get-ChildItem -LiteralPath $root -File -Force) + @(
         Where-Object { $_.Name -notin @('runtime', 'Results', 'dist', '.git') } |
         ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Recurse -File }
 )
+$brandingPattern = 'Flowseal|zapret-discord-youtube|vpndiscordyooutube|bypassblock|zapretvpns'
+$telegramCreditPaths = @((Join-Path $root 'README.md'), (Join-Path $root 'docs\TELEGRAM.md'))
 $forbidden = $sourceFiles |
     Where-Object {
         $_.FullName -notmatch '[\\/](runtime|Results|dist)[\\/]' -and
@@ -902,9 +904,17 @@ $forbidden = $sourceFiles |
         $_.FullName -notmatch '[\\/](THIRD_PARTY_NOTICES\.md|LICENSE\.txt|validate\.ps1|sync-upstream-ipset\.ps1)$' -and
         $_.Extension -in @('.md', '.bat', '.ps1', '.txt', '.in', '.yml', '.yaml')
     } |
-    Select-String -Pattern 'Flowseal|zapret-discord-youtube|vpndiscordyooutube|bypassblock|zapretvpns' -CaseSensitive:$false
+    Select-String -Pattern $brandingPattern -CaseSensitive:$false
 foreach ($hit in $forbidden) {
-    Add-ValidationError "Forbidden branding in $($hit.Path):$($hit.LineNumber)"
+    $brandingLine = $hit.Line
+    if ($hit.Path -in $telegramCreditPaths) {
+        # Credit the bundled Telegram upstream without allowing unrelated branding.
+        $brandingLine = $brandingLine -replace '(?i)https://github\.com/Flowseal/tg-ws-proxy\b', ''
+        $brandingLine = $brandingLine -replace '(?i)\bFlowseal(?:/tg-ws-proxy|''s tg-ws-proxy)\b', ''
+    }
+    if ($brandingLine -match $brandingPattern) {
+        Add-ValidationError "Forbidden branding in $($hit.Path):$($hit.LineNumber)"
+    }
 }
 
 if ($errors.Count -gt 0) {

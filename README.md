@@ -2,7 +2,7 @@
 
 # Zapret 2 NEXT
 
-**Готовая Windows-сборка Zapret 2 с удобными `.bat`-запусками, подбором стратегии, службой, диагностикой и проверкой целостности**
+**Готовая Windows-сборка Zapret 2 с удобными `.bat`-запусками, подбором стратегии, службой и обходом блокировки Telegram Desktop**
 
 [![Latest release](https://img.shields.io/github/v/release/Dunterbabochka/zapret2-next?display_name=tag&sort=semver)](https://github.com/Dunterbabochka/zapret2-next/releases/latest)
 [![Validate](https://github.com/Dunterbabochka/zapret2-next/actions/workflows/validate.yml/badge.svg)](https://github.com/Dunterbabochka/zapret2-next/actions/workflows/validate.yml)
@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
 [![Star this repo](https://img.shields.io/badge/Star-this_repo-yellow?logo=github)](https://github.com/Dunterbabochka/zapret2-next/stargazers)
 
-**Windows 10/11 x64 · Zapret 2 v1.0.2 · Discord · YouTube · WinDivert**
+**Zapret 2 NEXT v0.4.0 · Windows 10/11 x64 · Zapret 2 v1.0.5.2 · Discord · YouTube · Telegram Desktop**
 
 [Скачать последнюю версию](https://github.com/Dunterbabochka/zapret2-next/releases/latest)
 ·
@@ -19,6 +19,8 @@
 [Подбор стратегии](#compatibility-wizard)
 ·
 [Service Manager](#service-manager)
+·
+[Telegram Desktop](#telegram-desktop)
 ·
 [Бета-тестирование](#beta-testing)
 ·
@@ -41,12 +43,13 @@
 - автоматизированный Compatibility Wizard;
 - установку выбранной стратегии как службы Windows;
 - отдельные режимы Game Filter, IPSet и Discord Voice;
+- опциональный локальный прокси для Telegram Desktop с настройкой и автозапуском через `service.bat`;
 - диагностику сети и Discord Voice;
 - проверку конфигураций, бинарников и SHA256;
 - пользовательские списки доменов и IP-исключений;
 - инструменты для тестирования и подготовки отчётов.
 
-Это **не VPN, не прокси и не DNS-сервис**. Сборка управляет локальным движком `winws2` и драйвером WinDivert.
+Основные стратегии используют локальный движок `winws2` и драйвер WinDivert. Для Telegram Desktop предусмотрен отдельный локальный MTProto-прокси, который передаёт трафик через WebSocket/TLS. Сборка не меняет системный прокси или DNS.
 
 > [!IMPORTANT]
 > Это не официальный проект и не официальный релиз автора Zapret/Zapret 2.  
@@ -58,6 +61,16 @@
 
 ---
 
+## Что нового в 0.4.0
+
+- Telegram Desktop настраивается через **9. Telegram → 1. Enable and connect Telegram**. Готовая ссылка открывает Telegram; остаётся подтвердить подключение к прокси.
+- Telegram-прокси запускается в фоне при входе пользователя в Windows. Python устанавливать не нужно.
+- Движок `winws2`, его Lua-библиотеки и сопутствующие бинарники обновлены до официальной версии **Zapret 2 v1.0.5.2**. Версия и SHA256 закреплены в [`ENGINE_VERSION`](ENGINE_VERSION).
+- Меню `service.bat` пронумеровано последовательно от 1 до 15. Окно командной строки при открытии получает размер 110 столбцов × 40 строк, чтобы меню помещалось целиком.
+- Исправлен код завершения успешной проверки стабильности в GitHub Actions после тестов с намеренно вызванными ошибками.
+
+---
+
 ## Возможности
 
 | Возможность | Что делает |
@@ -65,6 +78,7 @@
 | Готовые стратегии | Позволяют запустить один из проверяемых профилей через обычный `.bat` |
 | Compatibility Wizard | Локально проверяет шесть публичных стратегий, Discord, YouTube и режимы Discord Voice |
 | Service Manager | Устанавливает выбранную конфигурацию как автоматически запускаемую службу Windows |
+| Telegram Desktop | Включает локальный MTProto → WebSocket/TLS прокси, открывает ссылку подключения и настраивает автозапуск |
 | Game Filter | Позволяет отдельно включать обработку TCP, UDP или всего игрового трафика |
 | IPSet | Ограничивает обработку списком подсетей и поддерживает безопасный fallback |
 | Discord Voice | Предлагает режимы `Off`, `Standard` и `Compatible` |
@@ -127,6 +141,14 @@ service.bat
 
 Выберите **Install Service**, затем стратегию. Служба `winws2` будет запускаться вместе с Windows.
 
+### Вариант 4 — включить Telegram Desktop
+
+1. Запустите `service.bat` и выберите **9. Telegram**.
+2. Выберите **1. Enable and connect Telegram**.
+3. В открывшемся Telegram подтвердите добавление прокси и подключение к нему.
+
+Прокси будет запускаться при входе этого пользователя в Windows. Автозапуск самого приложения Telegram настраивается отдельно в Telegram. Подробнее: [Telegram Desktop](#telegram-desktop).
+
 ---
 
 <a id="beta-testing"></a>
@@ -137,7 +159,7 @@ service.bat
 
 ### Как принять участие
 
-1. Откройте [все Releases](https://github.com/Dunterbabochka/zapret2-next/releases) и выберите версию с пометкой **Pre-release**, например `v0.4.0-beta.1`.
+1. Откройте [все Releases](https://github.com/Dunterbabochka/zapret2-next/releases) и выберите версию с пометкой **Pre-release**, например `v0.5.0-beta.1`.
 2. Скачайте `zapret2-next-vX.Y.Z-beta.N.zip` и `release-sha256.txt`. Не скачивайте автоматически созданный **Source code ZIP**.
 3. [Сверьте SHA256](#проверка-sha256) и распакуйте beta в отдельную папку. Не копируйте её поверх стабильной установки.
 4. Запустите `START BETA TEST.bat` от имени администратора и пройдите Compatibility Wizard.
@@ -154,8 +176,8 @@ service.bat
 Владельцу проекта достаточно создать и отправить prerelease-тег:
 
 ```powershell
-git tag -a v0.4.0-beta.1 -m "Zapret 2 NEXT v0.4.0-beta.1"
-git push origin v0.4.0-beta.1
+git tag -a v0.5.0-beta.1 -m "Zapret 2 NEXT v0.5.0-beta.1"
+git push origin v0.5.0-beta.1
 ```
 
 Теги с суффиксом `-alpha`, `-beta` или `-rc` автоматически:
@@ -180,7 +202,7 @@ git push origin v0.4.0-beta.1
 | `general (ALT11).bat` | Многоэтапный `multisplit` |
 | `general (FAKE TLS AUTO ALT2).bat` | Профиль с auto-TTL и `multisplit` |
 | `compatibility wizard.bat` | Автоматизированный подбор совместимой конфигурации |
-| `service.bat` | Установка, удаление и настройка службы |
+| `service.bat` | Установка, удаление и настройка службы, управление Telegram-прокси |
 | `diagnose discord voice.bat` | Расширенная диагностика Discord Voice |
 | `START BETA TEST.bat` | Запуск проверки из beta-архива; в стабильную сборку не входит |
 
@@ -259,7 +281,7 @@ Wizard выполняет четыре основных этапа:
 
 ## Service Manager
 
-`service.bat` — центральное меню управления установленной конфигурацией.
+`service.bat` — центральное меню управления установленной конфигурацией и Telegram-прокси. Пункты идут по порядку от 1 до 15; при открытии обычное окно командной строки автоматически увеличивается до 110 столбцов × 40 строк.
 
 ### Служба
 
@@ -316,6 +338,31 @@ Discord Voice и Game Filter UDP используют независимые н�
 `steam`, `google` и `dbank-v2` предназначены для ручного A/B-теста. Новый fake
 может как восстановить соединение, так и сломать ранее рабочую игру или Voice.
 После переключения обязательно заново проверьте Discord Voice и нужную игру.
+
+<a id="telegram-desktop"></a>
+
+#### Telegram Desktop
+
+Откройте **9. Telegram**:
+
+| Пункт | Действие |
+|---|---|
+| `1. Enable and connect Telegram` | Запускает прокси, включает его автозапуск и открывает Telegram для подтверждения подключения |
+| `2. Connect Telegram` | Повторно открывает ссылку подключения к уже настроенному прокси |
+| `3. Restart proxy` | Перезапускает локальный прокси |
+| `4. Disable proxy` | Останавливает прокси и удаляет его задание автозапуска |
+| `5. Show status` | Показывает состояние, порт и пути локальных файлов |
+| `6. Diagnose Telegram endpoints` | Проверяет локальный запуск и доступность внешних маршрутов |
+
+Готовый Release содержит `bin/telegram/zapret-telegram.exe` со встроенным рантаймом. Прокси слушает только `127.0.0.1`; порт и secret создаются автоматически. Настройки сохраняются в `runtime/telegram/<SID>` и не включаются в публичный архив.
+
+После **Enable** задание Планировщика Windows запускает прокси в фоне при входе текущего пользователя. Служба Zapret и Telegram-прокси управляются независимо. Этот пункт не включает автозапуск самого приложения Telegram.
+
+Для отключения выберите **4. Disable proxy**, затем отключите этот прокси в настройках соединения Telegram. Иначе приложение продолжит пытаться подключиться к остановленному локальному прокси.
+
+Модуль основан на [Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy) v1.11.1. Он использует маршруты WebSocket/TLS; по умолчанию разрешены и резервные маршруты через Cloudflare. Результат зависит от доступности этих маршрутов у провайдера. Сообщения, медиа и звонки проверяйте отдельно в приложении.
+
+Подробности подключения, диагностики и переноса в новую папку: [инструкция по Telegram](docs/TELEGRAM.md).
 
 ### Обновления и инструменты
 
@@ -449,7 +496,7 @@ Get-FileHash .\zapret2-next-vX.Y.Z.zip -Algorithm SHA256
 Рекомендуемый порядок:
 
 1. Запомните выбранную стратегию и режимы.
-2. Через старый `service.bat` удалите службу.
+2. Через старый `service.bat` удалите службу. Если Telegram-прокси включён, выберите в его меню **Disable proxy** и отключите старый прокси в Telegram.
 3. Скачайте новый Release ZIP.
 4. Распакуйте его в отдельную новую папку.
 5. Перенесите только свои пользовательские списки:
@@ -462,6 +509,7 @@ Get-FileHash .\zapret2-next-vX.Y.Z.zip -Algorithm SHA256
 
 6. Не переносите старые `runtime`, логи, сгенерированные конфиги и бинарники.
 7. Запустите новый `service.bat` и установите службу заново.
+8. Если используете Telegram-прокси, включите его через **9. Telegram → 1. Enable and connect Telegram** и подтвердите новое подключение в Telegram.
 
 ---
 
@@ -473,7 +521,7 @@ Get-FileHash .\zapret2-next-vX.Y.Z.zip -Algorithm SHA256
 
 1. Убедитесь, что файл запущен от имени администратора.
 2. Закройте другие DPI-bypass инструменты.
-3. На время проверки отключите VPN и proxy.
+3. На время проверки основных стратегий отключите VPN и сторонние proxy. Telegram-модуль проверяйте с выбранным локальным прокси этой сборки.
 4. Убедитесь, что не запущено несколько экземпляров `winws2.exe`.
 5. Попробуйте `general.bat`, затем остальные основные стратегии.
 6. Запустите `compatibility wizard.bat`.
@@ -511,6 +559,13 @@ GitHub автоматически создаёт Source code ZIP из отсле
 </details>
 
 <details>
+<summary><strong>Telegram-прокси включён, но Telegram не подключается?</strong></summary>
+
+Откройте **9. Telegram → 6. Diagnose Telegram endpoints**, затем повторите **2. Connect Telegram** и проверьте выбранный прокси в приложении. Если переместили папку сборки, отключите модуль из прежней папки и включите из новой. Подробнее: [инструкция по Telegram](docs/TELEGRAM.md).
+
+</details>
+
+<details>
 <summary><strong>Можно публиковать диагностический ZIP?</strong></summary>
 
 Только после ручной проверки. Он может содержать IP-адреса, порты, PID, временные метки, локальные пути и подробные логи сетевой активности.
@@ -523,7 +578,7 @@ GitHub автоматически создаёт Source code ZIP из отсле
 
 | Путь | Содержимое |
 |---|---|
-| `bin/` | `winws2`, WinDivert, Cygwin и вспомогательные бинарники |
+| `bin/` | `winws2`, WinDivert, Cygwin и готовый Telegram-рантайм в `bin/telegram/` |
 | `lua/` | Lua-библиотеки и профили Zapret 2 |
 | `presets/` | Шаблоны стратегий |
 | `lists/` | Доменные списки и IPSet |
@@ -542,10 +597,11 @@ Release этот скрипт не включается.
 
 ## Документация
 
-- [Запуск и структура launchers](docs/LAUNCH.md)
+- [Памятка по публикации проекта](https://github.com/Dunterbabochka/zapret2-next/blob/main/docs/LAUNCH.md)
 - [Экспериментальные профили](docs/CUSTOM-PRESETS.md)
 - [Параметры экспериментальных профилей](docs/CUSTOM-PARAMETERS.md)
 - [Ручное тестирование](docs/MANUAL_TEST.md)
+- [Подключение и диагностика Telegram Desktop](docs/TELEGRAM.md)
 - [Таблица подтверждённой совместимости](docs/COMPATIBILITY.md)
 - [Политика безопасности](SECURITY.md)
 - [Сторонние компоненты и лицензии](THIRD_PARTY_NOTICES.md)
@@ -561,7 +617,7 @@ Release этот скрипт не включается.
 - версию Windows;
 - провайдера и регион без лишних персональных данных;
 - использованную стратегию;
-- состояние Discord Web, Discord App, Voice и YouTube;
+- состояние Discord Web, Discord App, Voice, YouTube и Telegram Desktop, если используете его модуль;
 - воспроизводимые шаги;
 - очищенные фрагменты логов.
 
@@ -598,6 +654,7 @@ Release этот скрипт не включается.
 Основные проекты:
 
 - [bol-van/zapret2](https://github.com/bol-van/zapret2) — движок `winws2` и Lua API;
+- [Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy) — ядро Telegram MTProto → WebSocket/TLS прокси;
 - [basil00/WinDivert](https://github.com/basil00/WinDivert) — драйвер перехвата трафика;
 - Cygwin runtime;
 - другие компоненты, перечисленные в [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
@@ -620,6 +677,8 @@ Release этот скрипт не включается.
 
 ## English summary
 
-Zapret 2 NEXT is an independent Windows 10/11 x64 bundle built around the official Zapret 2 `winws2` engine and Lua API. It provides ready-to-use launchers, a local Compatibility Wizard, Windows service management, Game/IPSet/Discord Voice modes, diagnostics, validation and reproducible release tooling.
+Zapret 2 NEXT v0.4.0 is an independent Windows 10/11 x64 bundle built around the official Zapret 2 v1.0.5.2 `winws2` engine and Lua API. It provides ready-to-use launchers, a local Compatibility Wizard, Windows service management, Game/IPSet/Discord Voice modes, diagnostics, validation and reproducible release tooling.
+
+An optional Telegram Desktop module bundles Flowseal's tg-ws-proxy v1.11.1. Open `service.bat`, choose `9. Telegram` and `1. Enable and connect Telegram`, then confirm the proxy in Telegram. The proxy starts at Windows user logon; Python installation is not required. To disable it, choose `4. Disable proxy` and turn off the proxy in Telegram's connection settings. See [Telegram documentation](docs/TELEGRAM.md) for routes, diagnostics and update instructions.
 
 Download only the project release archive, verify SHA256, and remember that strategy effectiveness varies by provider and network. Opt-in beta testing is distributed through GitHub Pre-releases with a separate diagnostic launcher and issue form.
