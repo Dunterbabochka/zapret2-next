@@ -36,6 +36,8 @@ lists/ipset-all.txt.backup
 *.swp
 *.download
 *.lock
+__pycache__/
+*.pyc
 
 # Секреты
 .env

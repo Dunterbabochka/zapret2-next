@@ -31,6 +31,7 @@ echo   ZAPRET 2 NEXT SERVICE MANAGER v%VERSION%
 echo   Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!
 echo   UDP fakes: Discord=!DISCORD_FAKE!   Game=!GAME_FAKE!
 echo   Service: !SERVICE_STATUS!
+echo   Telegram: !TELEGRAM_STATUS!
 echo   -----------------------------------------------
 echo.
 echo   :: SERVICE
@@ -44,6 +45,7 @@ echo      5. IPSet Filter        [!IPSET_MODE!]
 echo      6. Auto-Update Check   [!UPDATE_MODE!]
 echo      12. Discord Voice      [!VOICE_MODE!]
 echo      13. UDP Fake Profiles [D:!DISCORD_FAKE! / G:!GAME_FAKE!]
+echo      15. Telegram          [!TELEGRAM_STATUS!]
 echo.
 echo   :: UPDATES
 echo      7. Update IPSet List
@@ -59,7 +61,7 @@ echo   -----------------------------------------------
 echo      0. Exit
 echo.
 set "choice="
-set /p "choice=   Select option (0-14): "
+set /p "choice=   Select option (0-15): "
 if "!choice!"=="1" goto install_service
 if "!choice!"=="2" goto remove_service
 if "!choice!"=="3" goto show_status
@@ -74,6 +76,7 @@ if "!choice!"=="11" goto tests
 if "!choice!"=="12" goto voice_filter
 if "!choice!"=="13" goto fake_profiles
 if "!choice!"=="14" goto clear_discord_cache
+if "!choice!"=="15" goto telegram
 if "!choice!"=="0" exit /b 0
 goto menu
 
@@ -87,6 +90,13 @@ if exist "%ROOT%\utils\check_updates.enabled" (set "UPDATE_MODE=enabled") else (
 call :read_ipset_mode
 call :read_voice_mode
 call :read_fake_modes
+call :read_telegram_status
+exit /b
+
+:read_telegram_status
+set "TELEGRAM_STATUS=unavailable"
+if not exist "%ROOT%\utils\manage-telegram.ps1" exit /b
+for /f "usebackq delims=" %%S in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-telegram.ps1" -Action Status -Compact 2^>nul`) do set "TELEGRAM_STATUS=%%S"
 exit /b
 
 :get_service_status
@@ -197,6 +207,7 @@ echo Discord UDP fake:   !DISCORD_FAKE!
 echo Game UDP fake:      !GAME_FAKE!
 echo Configuration:      !CURRENT_PRESET! + !GAME_MODE! + !IPSET_MODE! + !VOICE_MODE! + D:!DISCORD_FAKE! + G:!GAME_FAKE!
 echo Auto update check:  !UPDATE_MODE!
+echo Telegram:           !TELEGRAM_STATUS!
 tasklist /FI "IMAGENAME eq winws2.exe" 2>nul | findstr /I "winws2.exe" >nul
 if errorlevel 1 (echo winws2 process:     not running) else (echo winws2 process:     running)
 sc query WinDivert 2>nul | findstr /I "RUNNING" >nul
@@ -327,6 +338,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\clear-discord-
 if errorlevel 1 call :yellow "Discord cache cleanup was incomplete; see the messages above."
 pause
 goto menu
+:telegram
+cls
+if not exist "%ROOT%\utils\manage-telegram.ps1" (
+  call :red "Telegram manager is missing. Download the complete release archive."
+  pause
+  goto menu
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-telegram.ps1" -Action Menu
+if errorlevel 1 (
+  call :yellow "Telegram manager failed; see the messages above."
+  pause
+)
+goto menu
+
 :update_toggle
 if exist "%ROOT%\utils\check_updates.enabled" (
   del /q "%ROOT%\utils\check_updates.enabled"
@@ -424,6 +449,7 @@ for /f "tokens=3" %%P in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVer
 for %%S in (KillerNetworkService SmartByteNetworkService TracSrvWrapper) do sc query "%%S" >nul 2>&1 && call :yellow "Potential conflicting service: %%S"
 call :read_status
 echo Service: !SERVICE_STATUS!, strategy: !CURRENT_PRESET!, game: !GAME_MODE!, ipset: !IPSET_MODE!, voice: !VOICE_MODE!
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-telegram.ps1" -Action Status
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\validate.ps1" -Quick
 echo.
 pause

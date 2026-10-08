@@ -44,6 +44,25 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## Telegram MTProto-to-WebSocket proxy
+
+Copyright (c) 2026 Flowseal. Licensed under the MIT License.
+
+Source: https://github.com/Flowseal/tg-ws-proxy
+
+The optional `bin/telegram/zapret-telegram.exe` component adapts the headless
+MTProto-to-WebSocket proxy core from `tg-ws-proxy` v1.11.1, pinned to commit
+`18175fb4fe567cf6aef61f9d883eff010c9e66a8`. This bundle provides its own launcher,
+configuration, diagnostics and Windows logon task management. The original MIT
+copyright and permission notice is preserved in
+`third_party/tg-ws-proxy/LICENSE`; its text accompanies the released component.
+
+The frozen executable includes CPython, governed by the Python Software
+Foundation License, and cryptography dependencies distributed under their own
+licenses. The component's packaged license files are retained alongside the
+executable. PyInstaller's bootloader is distributed under GPL with its exception
+for generated executable bundles; the application code retains its own license.
+
 ## WinDivert
 
 WinDivert is distributed under the user's choice of LGPLv3 or GPLv2.

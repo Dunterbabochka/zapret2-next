@@ -9,6 +9,25 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+      - name: Validate Telegram transport and lifecycle
+        shell: powershell
+        run: |
+          python -m pip install -r packaging/telegram-requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s telegram -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./utils/validate-telegram.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $smoke = Join-Path $env:RUNNER_TEMP 'telegram-smoke.json'
+          $process = Start-Process -FilePath './bin/telegram/zapret-telegram.exe' -ArgumentList "--self-test --output `"$smoke`"" -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(45000)) { $process.Kill(); throw 'Telegram runtime smoke timeout.' }
+          if ($process.ExitCode -ne 0 -or -not (Get-Content $smoke -Raw | ConvertFrom-Json).ok) { throw 'Telegram runtime smoke failed.' }
+          python packaging/smoke-telegram.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Validate templates and release policy
         shell: pwsh
         run: ./utils/validate.ps1

@@ -8,6 +8,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'telegram-control.ps1')
+Assert-ZapretTelegramRuntime -Root $root
 $out = if ($OutputDirectory) {
     [IO.Path]::GetFullPath($OutputDirectory)
 } else {
@@ -51,7 +53,7 @@ $topFiles = @(
 )
 $dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
-$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'CUSTOM-PRESETS.md')
+$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'CUSTOM-PRESETS.md', 'TELEGRAM.md')
 New-Item -ItemType Directory -Path (Join-Path $stage 'docs') -Force | Out-Null
 foreach ($document in $publicDocs) {
     Copy-Item -LiteralPath (Join-Path $root ('docs\' + $document)) -Destination (Join-Path $stage 'docs') -Force
@@ -66,6 +68,13 @@ foreach ($dir in $dirs) {
         New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
         Copy-Item -LiteralPath $file.FullName -Destination $target -Force
     }
+}
+# Only provenance and the upstream license are shipped; developer Python
+# sources and tests stay outside the ready-to-use Windows archive.
+$telegramNoticeDir = Join-Path $stage 'third_party\tg-ws-proxy'
+New-Item -ItemType Directory -Path $telegramNoticeDir -Force | Out-Null
+foreach ($notice in @('LICENSE', 'SOURCE.json')) {
+    Copy-Item -LiteralPath (Join-Path $root "third_party\tg-ws-proxy\$notice") -Destination $telegramNoticeDir -Force
 }
 # Always ship the bundled snapshot, not the maintainer's mutable loaded list.
 Copy-Item -LiteralPath (Join-Path $stage '.service\ipset-service.txt') -Destination (Join-Path $stage 'lists\ipset-all.txt') -Force
@@ -84,6 +93,7 @@ if ($Beta) {
 
 foreach ($sourceOnlyPath in @(
     'utils\build-release.ps1',
+    'utils\build-telegram.ps1',
     'utils\configure-repository.ps1',
     'utils\sync-upstream-ipset.ps1',
     'utils\test-custom-presets.ps1',

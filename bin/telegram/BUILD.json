@@ -1,0 +1,8 @@
+{
+  "upstream_version": "1.11.1",
+  "upstream_commit": "18175fb4fe567cf6aef61f9d883eff010c9e66a8",
+  "launcher_sha256": "4560512d6736188ecf43bc4331ded6c26e42517ef00db2a889ad9bea6b662385",
+  "python": "3.14.5",
+  "architecture": "windows-x86_64",
+  "entry_point": "telegram/launcher.py"
+}

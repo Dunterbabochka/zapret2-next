@@ -94,13 +94,31 @@ if ($serviceContent -notmatch '(?m)^echo {6}10\. Run Diagnostics\r?$' -or
     $serviceContent -notmatch '(?m)^echo {6}14\. Clear Discord Cache') {
     Add-ValidationError 'The two-digit service menu items are not aligned or a required settings/tool item is missing.'
 }
-if ($serviceContent -notmatch 'Select option \(0-14\):' -or
+if ($serviceContent -notmatch 'Select option \(0-15\):' -or
     $serviceContent -notmatch 'goto voice_filter' -or
     $serviceContent -notmatch 'goto fake_profiles' -or
     $serviceContent -notmatch 'goto clear_discord_cache' -or
     $serviceContent -notmatch 'Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!' -or
     $serviceContent -notmatch 'UDP fakes: Discord=!DISCORD_FAKE!   Game=!GAME_FAKE!') {
     Add-ValidationError 'The service menu must expose the combined configuration, UDP fake selector and cache cleanup.'
+}
+if ($serviceContent -notmatch '(?m)^echo {6}15\. Telegram' -or
+    $serviceContent -notmatch 'goto telegram' -or
+    $serviceContent -notmatch 'manage-telegram\.ps1') {
+    Add-ValidationError 'The service menu must expose the bundled Telegram module.'
+}
+try {
+    . (Join-Path $PSScriptRoot 'telegram-control.ps1')
+    Assert-ZapretTelegramRuntime -Root $root
+    $telegramLauncher = Join-Path $root 'telegram\launcher.py'
+    if (Test-Path -LiteralPath $telegramLauncher -PathType Leaf) {
+        $telegramBuild = Get-Content -LiteralPath (Join-Path $root 'bin\telegram\BUILD.json') -Raw | ConvertFrom-Json
+        if ((Get-FileHash -LiteralPath $telegramLauncher -Algorithm SHA256).Hash -ine $telegramBuild.launcher_sha256) {
+            throw 'Telegram launcher changed since the EXE was built. Run utils\build-telegram.ps1.'
+        }
+    }
+} catch {
+    Add-ValidationError "Telegram runtime integrity failed: $($_.Exception.Message)"
 }
 if ($serviceContent -notmatch ':get_service_status' -or
     $serviceContent -notmatch 'Get-Service -Name' -or
@@ -872,9 +890,15 @@ foreach ($path in $statePaths) {
     }
 }
 
-$forbidden = Get-ChildItem -LiteralPath $root -Recurse -File |
+$sourceFiles = @(Get-ChildItem -LiteralPath $root -File -Force) + @(
+    Get-ChildItem -LiteralPath $root -Directory -Force |
+        Where-Object { $_.Name -notin @('runtime', 'Results', 'dist', '.git') } |
+        ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Recurse -File }
+)
+$forbidden = $sourceFiles |
     Where-Object {
         $_.FullName -notmatch '[\\/](runtime|Results|dist)[\\/]' -and
+        $_.FullName -notmatch '[\\/]bin[\\/]telegram[\\/]licenses[\\/]' -and
         $_.FullName -notmatch '[\\/](THIRD_PARTY_NOTICES\.md|LICENSE\.txt|validate\.ps1|sync-upstream-ipset\.ps1)$' -and
         $_.Extension -in @('.md', '.bat', '.ps1', '.txt', '.in', '.yml', '.yaml')
     } |

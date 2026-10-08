@@ -7,3 +7,7 @@
 *.dll binary
 *.exe binary
 *.sys binary
+*.py text eol=lf
+# Preserve the exact bytes covered by the Telegram integrity manifests.
+bin/telegram/** -text
+third_party/tg-ws-proxy/** -text

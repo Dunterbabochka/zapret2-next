@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/Flowseal/tg-ws-proxy",
+  "version": "1.11.1",
+  "commit": "18175fb4fe567cf6aef61f9d883eff010c9e66a8",
+  "notes": "Unmodified proxy package and utils/logging_setup.py; empty utils/__init__.py added for packaging.",
+  "sha256": {
+    "LICENSE": "2a98256df06052c3b132cf522e356da90ade2f749b6f7435f7cdafd1d9123fa2",
+    "proxy/__init__.py": "d8fba4a6956dbd2ce369f6bfc3950cf51d6ca18d1268dd42b1df3b03b9f4da82",
+    "proxy/_aes.py": "5b07f23c1d65140fb933e2c31d42817012d2ff4b60664f69146fe2554d54d528",
+    "proxy/balancer.py": "3d4330488b968e146286b14790c0814eae3efe5d0f26206572369ca6368eed24",
+    "proxy/bridge.py": "fbe95fb5d2ebfbbcc53e667628646cf1e652abe70b0c09ef9dc4cc2fb3ab8312",
+    "proxy/cf_h2.py": "462b1f798a92b0f3f069f5825012e7c81a910a03ed943350d7909ce77fd79f34",
+    "proxy/config.py": "7d3b83a72d9d91db397a19c25cb5a3b5211f8c5aaf52235b7e03e0bc7293c6be",
+    "proxy/fake_tls.py": "ce4ce10990117f96522558bc38f2798630b4b736854fd0bf738ba886332b9cb9",
+    "proxy/h2_transport.py": "722a20f0091d6ea4457eaab2c41829d180fb1831afdd0fc2d14a1f12984492b9",
+    "proxy/network_debug.py": "4a4d014c764439df076d15cbbaae819411fd0c5da0cf7fb9b3a630bf0ddeca2d",
+    "proxy/pool.py": "6f7f5da3d8dd55ceed6714e0c8db932d765e7096b72f12348e05af241dd50090",
+    "proxy/raw_websocket.py": "32c9f456ab3e7b06820261e3c4088e5c8ec4c15329ec280f521c960db54cb673",
+    "proxy/stats.py": "4a54b09e384d77677e48bef81ac0ecfc201278ec5462aafd7ce4a5edd91270a7",
+    "proxy/tg_ws_proxy.py": "2d76d8c7cfaf4382cc900886ab00475a4b120e19f83e3a98a29f6ab4266f66f2",
+    "proxy/utils.py": "0d2bc192da984132b545874aecd422808fceb1347889fd5971360f06d54d748f",
+    "utils/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "utils/logging_setup.py": "a375f3427dbc3dcc02967cc7f3c229b99a2c84778e2269b6436d08e9a1a503c8"
+  }
+}
