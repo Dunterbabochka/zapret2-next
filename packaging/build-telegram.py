@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-VENDOR = ROOT / "third_party" / "tg-ws-proxy"
+VENDOR = ROOT / "packaging" / "third_party" / "tg-ws-proxy"
 OUT = ROOT / "bin" / "telegram"
 WORK = ROOT / "runtime" / "telegram-build"
 

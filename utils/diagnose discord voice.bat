@@ -9,8 +9,8 @@ if errorlevel 1 (
 
 title Zapret 2 NEXT - Discord voice diagnostic
 set "PRESET=%~1"
-if not defined PRESET set "PRESET=VOICE"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\discord-voice-diagnostic.ps1" -Preset "%PRESET%"
+if not defined PRESET set "PRESET=general"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0discord-voice-diagnostic.ps1" -Preset "%PRESET%"
 set "RESULT=%ERRORLEVEL%"
 echo.
 if not "%RESULT%"=="0" (

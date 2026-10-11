@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string[]]$Preset = @('ALT12', 'CUSTOM SAFE', 'CUSTOM BALANCED', 'CUSTOM AGGRESSIVE'),
+    [string[]]$Preset = @('ALT12', 'NEXT SAFE', 'NEXT BALANCED', 'NEXT AGGRESSIVE'),
     [ValidateRange(2, 60)]
     [int]$TimeoutSeconds = 8,
     [string]$OutputDirectory,
@@ -50,10 +50,10 @@ $baselineName = 'DIRECT NO ZAPRET'
 $curlVersionText = try { (& curl.exe --version 2>&1 | Out-String) } catch { '' }
 $curlSupportsHttp3 = $curlVersionText -match '(?im)^Features:.*\bHTTP3\b'
 $tieBreakRank = @{
-    'CUSTOM SAFE' = 0
+    'NEXT SAFE' = 0
     'ALT12' = 1
-    'CUSTOM BALANCED' = 2
-    'CUSTOM AGGRESSIVE' = 3
+    'NEXT BALANCED' = 2
+    'NEXT AGGRESSIVE' = 3
 }
 
 function Add-Warning([string]$Message) {
@@ -235,7 +235,7 @@ function Invoke-WebChecks {
                 $tests += [pscustomobject]@{ Name = 'QUIC'; Args = @('--http3-only') }
             }
             foreach ($test in $tests) {
-                Write-Progress -Activity ('CUSTOM A/B: {0}' -f $Candidate) `
+                Write-Progress -Activity ('NEXT A/B: {0}' -f $Candidate) `
                     -Status ('{0} {1} ({2}/{3})' -f $target.Name, $test.Name, ($completedChecks + 1), $totalChecks) `
                     -PercentComplete ([math]::Floor(($completedChecks / [math]::Max(1, $totalChecks)) * 100))
                 if ($test.Name -eq 'QUIC' -and -not $curlSupportsHttp3) {
@@ -311,7 +311,7 @@ function Invoke-WebChecks {
                 $completedChecks++
             }
         } elseif ($null -ne $target.PingTarget) {
-            Write-Progress -Activity ('CUSTOM A/B: {0}' -f $Candidate) `
+            Write-Progress -Activity ('NEXT A/B: {0}' -f $Candidate) `
                 -Status ('{0} ICMP ({1}/{2})' -f $target.Name, ($completedChecks + 1), $totalChecks) `
                 -PercentComplete ([math]::Floor(($completedChecks / [math]::Max(1, $totalChecks)) * 100))
             $ping = [Net.NetworkInformation.Ping]::new()
@@ -365,7 +365,7 @@ function Invoke-WebChecks {
             }
         }
     }
-    Write-Progress -Activity ('CUSTOM A/B: {0}' -f $Candidate) -Completed
+    Write-Progress -Activity ('NEXT A/B: {0}' -f $Candidate) -Completed
 }
 
 function Stop-Winws2 {
@@ -493,9 +493,9 @@ function Add-CandidateSummary([string]$Name, [string]$Stage, [bool]$StartupOk,
 }
 
 function Invoke-CustomABSelfTest {
-    if ($tieBreakRank['CUSTOM SAFE'] -ge $tieBreakRank['ALT12'] -or
-        $tieBreakRank['ALT12'] -ge $tieBreakRank['CUSTOM BALANCED'] -or
-        $tieBreakRank['CUSTOM BALANCED'] -ge $tieBreakRank['CUSTOM AGGRESSIVE']) {
+    if ($tieBreakRank['NEXT SAFE'] -ge $tieBreakRank['ALT12'] -or
+        $tieBreakRank['ALT12'] -ge $tieBreakRank['NEXT BALANCED'] -or
+        $tieBreakRank['NEXT BALANCED'] -ge $tieBreakRank['NEXT AGGRESSIVE']) {
         throw 'The deterministic low-intervention tie-break order is invalid.'
     }
     $sampleLog = Join-Path $outputRoot 'selftest-debug.log'
@@ -558,7 +558,7 @@ function Invoke-CustomABSelfTest {
     }
     $allRows.Clear()
     $candidateReports.Clear()
-    Write-Host 'CUSTOM A/B self-test passed: debug evidence and complete-pass ranking contract.' -ForegroundColor Green
+    Write-Host 'NEXT A/B self-test passed: debug evidence and complete-pass ranking contract.' -ForegroundColor Green
 }
 
 if ($SelfTest) {
@@ -741,14 +741,14 @@ $document = [ordered]@{
     ProxySnapshot = $proxySnapshot
     ProxyContaminationPolicy = 'Configured proxy/VPN/TUN or suspicious proxy log lines mark a run contaminated and exclude it from ranking.'
     RankingPolicy = 'A candidate must pass every mandatory Discord/YouTube HTTP/TLS row with row-level profile/Lua action evidence and no profile-not-found messages. ICMP is never ranked.'
-    TieBreakPolicy = 'When mandatory and transport scores tie, prefer CUSTOM SAFE, then ALT12, CUSTOM BALANCED and CUSTOM AGGRESSIVE to minimize intervention.'
+    TieBreakPolicy = 'When mandatory and transport scores tie, prefer NEXT SAFE, then ALT12, NEXT BALANCED and NEXT AGGRESSIVE to minimize intervention.'
     ApplicationEvidencePolicy = 'A HTTP response is transport evidence only. Discord App, updater, Web UI, YouTube playback and Voice require manual fresh-session confirmation.'
     ExecutionError = $executionError
     Warnings = @($warnings)
     Candidates = @($candidateReports)
     Rows = @($allRows)
     Winner = if ($null -ne $winner) { $winner.Candidate } else { $null }
-    Recommendation = if ($null -ne $winner) { 'Use only as an experimental candidate after manual Discord/YouTube/Voice confirmation.' } else { 'No automatic recommendation: collect a clean, non-contaminated run first.' }
+    Recommendation = if ($null -ne $winner) { 'Use the candidate only after manual Discord/YouTube/Voice confirmation; AGGRESSIVE remains experimental.' } else { 'No automatic recommendation: collect a clean, non-contaminated run first.' }
     Files = [ordered]@{
         Report = $reportPath
         CSV = $csvPath
@@ -795,7 +795,7 @@ $manualRows = foreach ($candidateName in $manualCandidates) {
 @($manualRows) | Export-Csv -LiteralPath $manualCsvPath -NoTypeInformation -Encoding UTF8
 
 $reportLines = New-Object 'System.Collections.Generic.List[string]'
-[void]$reportLines.Add('Zapret 2 NEXT - CUSTOM preset deterministic A/B report')
+[void]$reportLines.Add('Zapret 2 NEXT - NEXT preset deterministic A/B report')
 [void]$reportLines.Add(('Created: {0}' -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss zzz')))
 [void]$reportLines.Add(('TesterId: {0}' -f $TesterId))
 [void]$reportLines.Add(('Provider: {0}' -f $Provider))
@@ -804,14 +804,14 @@ $reportLines = New-Object 'System.Collections.Generic.List[string]'
 [void]$reportLines.Add(('OS: {0}' -f $osVersion))
 [void]$reportLines.Add('')
 [void]$reportLines.Add('Test contract')
-[void]$reportLines.Add('Direct no-Zapret baseline, ALT12, CUSTOM SAFE, CUSTOM BALANCED and CUSTOM AGGRESSIVE use the same endpoint set.')
+[void]$reportLines.Add('Direct no-Zapret baseline, ALT12, NEXT SAFE, NEXT BALANCED and NEXT AGGRESSIVE use the same endpoint set.')
 [void]$reportLines.Add('Game=off, IPSet=loaded and Voice=off are explicit renderer overrides for the web A/B.')
 [void]$reportLines.Add('ICMP rows are retained for diagnostics and excluded from ranking.')
 [void]$reportLines.Add(('QUIC probe availability: {0}. Unsupported local curl is reported as unavailable, not as a network failure.' -f $curlSupportsHttp3))
 [void]$reportLines.Add('Proxy/VPN/TUN indicators contaminate results; contaminated candidates are not recommended.')
 [void]$reportLines.Add('HTTP response transport is not proof of Discord updater/app success; fresh manual confirmation is required.')
 [void]$reportLines.Add('A ranked candidate must have a complete mandatory transport pass plus row-level profile ID and real Lua desync evidence.')
-[void]$reportLines.Add('Equal transport scores prefer CUSTOM SAFE, then ALT12, CUSTOM BALANCED and CUSTOM AGGRESSIVE to minimize intervention.')
+[void]$reportLines.Add('Equal transport scores prefer NEXT SAFE, then ALT12, NEXT BALANCED and NEXT AGGRESSIVE to minimize intervention.')
 [void]$reportLines.Add('Manual application/safety/voice acceptance is recorded separately in manual-acceptance.csv and is never inferred from curl.')
 [void]$reportLines.Add('')
 [void]$reportLines.Add('IPSet')

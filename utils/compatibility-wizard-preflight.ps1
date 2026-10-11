@@ -78,12 +78,13 @@ function Get-ZapretConflictState {
 }
 
 function Get-PreflightSnapshot {
+    param([switch]$SkipVoiceChecks)
     $findings = [Collections.Generic.List[object]]::new()
 
     if (Test-IsAdministrator) {
         [void]$findings.Add((New-PreflightFinding 'Administrator' 'Pass' 'Runtime' 'Administrator rights are available.'))
     } else {
-        [void]$findings.Add((New-PreflightFinding 'Administrator' 'Blocker' 'Runtime' 'Administrator rights are required.' 'Run compatibility wizard.bat and approve the UAC prompt.'))
+        [void]$findings.Add((New-PreflightFinding 'Administrator' 'Blocker' 'Runtime' 'Administrator rights are required.' 'Open service.bat > Run Diagnostics and approve the UAC prompt.'))
     }
 
     $bfe = Get-Service -Name BFE -ErrorAction SilentlyContinue
@@ -117,27 +118,30 @@ function Get-PreflightSnapshot {
         [void]$findings.Add((New-PreflightFinding 'curl' 'Blocker' 'Runtime' 'curl.exe is required for deterministic endpoint tests.' 'Repair the Windows curl installation.'))
     }
 
-    $pktmon = Get-Command pktmon.exe -ErrorAction SilentlyContinue
-    if ($null -ne $pktmon) {
-        $previousErrorAction = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = 'Continue'
-            $pktmonStatus = @(& $pktmon.Source status 2>&1)
-            $pktmonExitCode = $LASTEXITCODE
-        } finally {
-            $ErrorActionPreference = $previousErrorAction
-        }
-        $pktmonText = ($pktmonStatus | Out-String).Trim()
-        $pktmonRunning = $pktmonText -match '(?im)^\s*(?:logger\s+state|logging\s+state|состояние[^:]*):\s*(?:running|выполняется|запущен)'
-        if ($pktmonExitCode -ne 0) {
-            [void]$findings.Add((New-PreflightFinding 'PktMonAccess' 'Blocker' 'Runtime' 'PktMon state could not be read.' 'Run the elevated launcher and ensure no other PktMon owner blocks access.' $false $pktmonText))
-        } elseif ($pktmonRunning) {
-            [void]$findings.Add((New-PreflightFinding 'PktMonSession' 'Blocker' 'Runtime' 'A PktMon logging session is already running.' 'Stop the existing PktMon session manually, then rerun preflight.' $false $pktmonText))
+    if (-not $SkipVoiceChecks) {
+        $pktmon = Get-Command pktmon.exe -ErrorAction SilentlyContinue
+        if ($null -ne $pktmon) {
+            $previousErrorAction = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $pktmonStatus = @(& $pktmon.Source status 2>&1)
+                $pktmonExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $previousErrorAction
+            }
+            $pktmonText = ($pktmonStatus | Out-String).Trim()
+            $pktmonRunning = $pktmonText -match '(?im)^\s*(?:logger\s+state|logging\s+state|состояние[^:]*):\s*(?:running|выполняется|запущен)'
+            if ($pktmonExitCode -ne 0) {
+                [void]$findings.Add((New-PreflightFinding 'PktMonAccess' 'Blocker' 'Runtime' 'PktMon state could not be read.' 'Run the elevated launcher and ensure no other PktMon owner blocks access.' $false $pktmonText))
+            } elseif ($pktmonRunning) {
+                [void]$findings.Add((New-PreflightFinding 'PktMonSession' 'Blocker' 'Runtime' 'A PktMon logging session is already running.' 'Stop the existing PktMon session manually, then rerun preflight.' $false $pktmonText))
+            } else {
+                [void]$findings.Add((New-PreflightFinding 'PktMon' 'Pass' 'Runtime' 'PktMon is available and no active logger was detected.' '' $false $pktmonText))
+            }
         } else {
-            [void]$findings.Add((New-PreflightFinding 'PktMon' 'Pass' 'Runtime' 'PktMon is available and no active logger was detected.' '' $false $pktmonText))
+            [void]$findings.Add((New-PreflightFinding 'PktMon' 'Blocker' 'Runtime' 'PktMon is required for voice metadata collection.' 'Use a supported Windows 10/11 installation with PktMon.'))
         }
-    } else {
-        [void]$findings.Add((New-PreflightFinding 'PktMon' 'Blocker' 'Runtime' 'PktMon is required for voice metadata collection.' 'Use a supported Windows 10/11 installation with PktMon.'))
+
     }
 
     try {

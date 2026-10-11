@@ -30,6 +30,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+# Keep existing service settings and command-line invocations working after renaming.
+if ($Preset -match '^CUSTOM (SAFE|BALANCED|AGGRESSIVE)$') {
+    $Preset = 'NEXT ' + $matches[1].ToUpperInvariant()
+}
 $presetPath = Join-Path $root ("presets\{0}.txt.in" -f $Preset)
 $basePath = Join-Path $root 'presets\_base.txt.in'
 $profilesPath = Join-Path $root 'presets\_profiles.txt.in'
@@ -143,6 +147,18 @@ if ($wfUdp -notmatch '^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$') {
 }
 
 $content = (Get-Content -LiteralPath $basePath -Raw) + "`r`n" + (Get-Content -LiteralPath $profilesPath -Raw)
+function Get-PresetSection([string]$Name, [string]$Default = '') {
+    if ($sections.ContainsKey($Name)) { return ($sections[$Name] -join "`r`n").Trim() }
+    return $Default
+}
+$content = $content.Replace('{{PRESET_INIT}}', (Get-PresetSection 'PRESET_INIT'))
+$content = $content.Replace('{{QUIC_FILTER}}', (Get-PresetSection 'QUIC_FILTER' '--filter-udp=443'))
+$content = $content.Replace('{{IPSET_TCP_EXCLUDE}}', (Get-PresetSection 'IPSET_TCP_EXCLUDE'))
+$content = $content.Replace('{{IPSET_UDP_EXCLUDE}}', (Get-PresetSection 'IPSET_UDP_EXCLUDE'))
+$content = $content.Replace('{{GAME_TCP_ACTIONS}}', (Get-PresetSection 'GAME_TCP_ACTIONS' ($sections['TCP_GENERIC'] -join "`r`n")))
+$gameTcpRange = Get-PresetSection 'GAME_TCP_RANGE' '-d4'
+if ($gameTcpRange -notin @('-d4', '-n4')) { throw "Invalid [GAME_TCP_RANGE] in $presetPath" }
+$content = $content.Replace('{{GAME_TCP_RANGE}}', $gameTcpRange)
 foreach ($name in $required) {
     $value = ($sections[$name] -join "`r`n").Trim()
     $content = $content.Replace("{{$name}}", $value)
@@ -157,7 +173,7 @@ $discordWebTls = if ($sections.ContainsKey('DISCORD_WEB_TLS') -and $sections['DI
 } else {
     ($sections['TCP_TLS'] -join [Environment]::NewLine).Trim()
 }
-$discordWebProfile = if ($Preset -match '^CUSTOM (SAFE|BALANCED|AGGRESSIVE)$') {
+$discordWebProfile = if ($Preset -match '^NEXT (SAFE|BALANCED|AGGRESSIVE)$') {
     @(
         '--filter-tcp=443'
         '--hostlist=../lists/list-discord-web.txt'
@@ -230,7 +246,7 @@ $gameUdpProfile = @(
         '--ipset-exclude=../lists/ipset-exclude-user.txt'
         '--payload=all'
         '--out-range=-n4'
-        '--lua-desync=fake:blob=game_udp:repeats=10:payload=all'
+        (Get-PresetSection 'GAME_UDP_ACTIONS' '--lua-desync=fake:blob=game_udp:repeats=10:payload=all')
     ) -join "`r`n"
 $gameUdpProfile = $gameUdpProfile.Replace('{{IPSET_INCLUDE}}', $ipsetInclude)
 $content = $content.Replace('{{GAME_UDP_PROFILE}}', $gameUdpProfile)
@@ -259,7 +275,8 @@ $binDir = [IO.Path]::GetFullPath((Join-Path $root 'bin')).Replace('\', '/')
 
 # Emit quoted absolute paths for file-valued Windows options instead of
 # depending on when winws2 applies --chdir. Keep templates readable.
-$content = [regex]::Replace($content, '(?m)=@\.\./(lua|windivert\.filter)/([^\r\n]+)(?=\r?$)', '=@"{{ROOT_DIR}}/$1/$2"')
+$content = [regex]::Replace($content, '(?m)=@\.\./(lua)/([^\r\n]+)(?=\r?$)', '=@"{{ROOT_DIR}}/$1/$2"')
+$content = [regex]::Replace($content, '(?m)=@windivert\.filter/([^\r\n]+)(?=\r?$)', '=@"{{BIN_DIR}}/windivert.filter/$1"')
 $content = [regex]::Replace($content, '(?m):@fake/([^\r\n]+)(?=\r?$)', ':@"{{BIN_DIR}}/fake/$1"')
 $content = [regex]::Replace($content, '(?m)=\.\./lists/([^\r\n]+)(?=\r?$)', '="{{ROOT_DIR}}/lists/$1"')
 $content = $content.Replace('{{ROOT_DIR}}', $rootDir)

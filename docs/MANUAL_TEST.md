@@ -19,9 +19,9 @@ the wizard self-test simulates 13 outcomes without changing live services.
 
 ## 2. Manual launchers
 
-1. Run `general.bat`, then verify that `winws2.exe` remains in Task Manager.
+1. Run `strategies/general.bat`, then verify that `winws2.exe` remains in Task Manager.
 2. Confirm YouTube web/video and Discord web access.
-3. Repeat for every remaining `general (?).bat` launcher. Only the manual process from the same folder may be replaced; a process from another bundle must produce a conflict message.
+3. Repeat for every remaining `strategies/general (?).bat` launcher. Only the manual process from the same folder may be replaced; a process from another bundle must produce a conflict message.
 4. Where available, test Discord voice in both directions and one screen-share session.
 
 ## 3. Service Manager

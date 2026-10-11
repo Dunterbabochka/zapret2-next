@@ -1,41 +1,45 @@
-name: Strategy compatibility report
-description: Report whether a strategy works on a specific network
-title: "[Strategy]: "
+name: Проблема со стратегиями
+description: Сообщить, что не работает, и приложить автоматический отчёт
+title: "[Стратегии]: "
 labels: [strategy-report]
 body:
-  - type: input
-    id: windows
+  - type: markdown
     attributes:
-      label: Windows version
-      placeholder: Windows 11 24H2 x64
-    validations:
-      required: true
+      value: |
+        Если ни одна стратегия не подошла, откройте service.bat → 13. Run Diagnostics → 2. Create support report (automatic).
+        После проверки приложите готовый ZIP из runtime/support-reports. Подробные локальные логи прикладывать не нужно.
   - type: input
     id: provider
     attributes:
-      label: Provider and region
-      description: Do not include an IP address, exact home address, account number, or other personal data.
+      label: Провайдер
+      placeholder: Название провайдера
     validations:
       required: true
-  - type: dropdown
-    id: strategy
+  - type: input
+    id: region
     attributes:
-      label: Strategy
-      options: [general, ALT, ALT3, ALT5, ALT11, ALT12, VOICE, FAKE TLS AUTO, FAKE TLS AUTO ALT2, SIMPLE FAKE]
+      label: Область или город
+      description: Необязательно, но помогает сопоставлять результаты в разных сетях.
+      placeholder: Область или город
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что не работает?
+      placeholder: Например, YouTube не открывается ни с одной стратегией; Discord работает.
     validations:
       required: true
-  - type: checkboxes
-    id: results
-    attributes:
-      label: Results
-      options:
-        - label: YouTube website opens
-        - label: YouTube video starts
-        - label: Discord website opens
-        - label: Discord voice works in both directions
-        - label: Discord screen sharing works
   - type: textarea
     id: diagnostics
     attributes:
-      label: Sanitized diagnostics
-      description: Paste only relevant service/test output. Do not attach packet captures containing private traffic.
+      label: Автоматический отчёт
+      description: Перетащите сюда созданный ZIP из runtime/support-reports. Если отчёт не создался, напишите, на каком шаге остановилась проверка.
+  - type: input
+    id: version
+    attributes:
+      label: Версия сборки и Windows
+      description: Можно пропустить, если приложили отчёт — версии уже есть в нём.
+  - type: dropdown
+    id: strategy
+    attributes:
+      label: Стратегия
+      options: [Ни одна не подошла, general, ALT, ALT3, ALT5, ALT11, ALT12, ALT13, EXP, FAKE TLS AUTO ALT2, NEXT SAFE, NEXT BALANCED]

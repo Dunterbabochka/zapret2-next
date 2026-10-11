@@ -34,6 +34,9 @@ jobs:
       - name: Validate update and service rollback
         shell: powershell
         run: ./utils/validate-stability.ps1
+      - name: Validate automatic support reports
+        shell: powershell
+        run: ./utils/validate-support.ps1
       - name: Detect release channel
         id: release_meta
         shell: pwsh

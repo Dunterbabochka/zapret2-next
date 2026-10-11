@@ -2,7 +2,7 @@ function New-SimulationWebRows {
     param([string]$Scenario)
 
     $rows = @()
-    $presets = @('general', 'ALT', 'ALT3', 'ALT5', 'ALT11', 'FAKE TLS AUTO ALT2')
+    $presets = $publicPresets
     foreach ($preset in $presets) {
         foreach ($target in @('Discord gateway', 'Discord web', 'YouTube watch', 'YouTube image')) {
             $success = $preset -eq 'ALT3'

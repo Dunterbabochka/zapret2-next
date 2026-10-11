@@ -1,5 +1,5 @@
 # YouTube/general QUIC
---filter-udp=443
+{{QUIC_FILTER}}
 --hostlist=../lists/list-general.txt
 --hostlist=../lists/list-general-user.txt
 --hostlist-exclude=../lists/list-exclude.txt
@@ -31,7 +31,7 @@
 {{GOOGLE_TLS}}
 --new
 
-# Discord Web, Gateway, CDN and Updates (CUSTOM presets only)
+# Discord Web, Gateway, CDN and Updates (NEXT presets only)
 {{DISCORD_WEB_PROFILE}}
 
 # General HTTP
@@ -63,6 +63,7 @@
 # IPSet fallback UDP
 --filter-udp=443
 {{IPSET_INCLUDE}}
+{{IPSET_UDP_EXCLUDE}}
 --ipset-exclude=../lists/ipset-exclude.txt
 --ipset-exclude=../lists/ipset-exclude-user.txt
 --payload=quic_initial
@@ -73,6 +74,7 @@
 # IPSet fallback TCP
 --filter-tcp={{IPSET_TCP_FILTER}}
 {{IPSET_INCLUDE}}
+{{IPSET_TCP_EXCLUDE}}
 --ipset-exclude=../lists/ipset-exclude.txt
 --ipset-exclude=../lists/ipset-exclude-user.txt
 --payload=http_req,tls_client_hello
@@ -86,8 +88,8 @@
 --ipset-exclude=../lists/ipset-exclude.txt
 --ipset-exclude=../lists/ipset-exclude-user.txt
 --payload=all
---out-range=-d4
-{{TCP_GENERIC}}
+--out-range={{GAME_TCP_RANGE}}
+{{GAME_TCP_ACTIONS}}
 --new
 
 # Optional game UDP profile

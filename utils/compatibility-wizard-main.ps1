@@ -28,8 +28,8 @@ function Invoke-WizardContractValidation {
     $errors = [Collections.Generic.List[string]]::new()
     try { $targets = @(Get-WizardTargets) } catch { $errors.Add($_.Exception.Message); $targets = @() }
 
-    if ($publicPresets.Count -ne 6 -or @($publicPresets | Sort-Object -Unique).Count -ne 6) {
-        $errors.Add('The wizard must expose exactly six unique public presets.')
+    if ($publicPresets.Count -ne 11 -or @($publicPresets | Sort-Object -Unique).Count -ne 11) {
+        $errors.Add('The wizard must expose exactly eleven unique public presets.')
     }
     foreach ($preset in $publicPresets) {
         if (-not (Test-Path -LiteralPath (Join-Path $root "presets\$preset.txt.in") -PathType Leaf)) {
@@ -358,7 +358,7 @@ function Invoke-CompatibilityWizard {
         Stop-ConflictState $script:conflictState | Out-Null
 
         Write-Host ''
-        Write-Host 'Stage 1/4: one pass across all six public web presets' -ForegroundColor Cyan
+        Write-Host "Stage 1/4: one pass across all $($publicPresets.Count) public web presets" -ForegroundColor Cyan
         foreach ($preset in $publicPresets) {
             Invoke-WebPass -Preset $preset -Pass 1 -IPSetMode 'any' -VoiceMode 'off' -Phase 'scan' | Out-Null
         }

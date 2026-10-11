@@ -10,6 +10,10 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'telegram-control.ps1')
 Assert-ZapretTelegramRuntime -Root $root
+. (Join-Path $PSScriptRoot 'preset-catalog.ps1')
+$strategyLaunchers = @($publicPresets | ForEach-Object {
+    if ($_ -eq 'general') { 'general.bat' } else { "general ($_)" + '.bat' }
+})
 $out = if ($OutputDirectory) {
     [IO.Path]::GetFullPath($OutputDirectory)
 } else {
@@ -35,7 +39,7 @@ if (-not $stage.StartsWith($out.TrimEnd('\') + '\', [StringComparison]::OrdinalI
     $root.StartsWith($stage.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or $stage -eq $root) {
     throw 'Release staging directory must remain inside the output directory and outside the source checkout.'
 }
-foreach ($sourceDir in @('bin','lua','lists','presets','utils','windivert.filter','.service')) {
+foreach ($sourceDir in @('bin','lua','lists','presets','utils','strategies','.service')) {
     $sourcePath = (Join-Path $root $sourceDir).TrimEnd('\')
     if ($out -eq $sourcePath -or $out.StartsWith($sourcePath + '\', [StringComparison]::OrdinalIgnoreCase)) {
         throw 'OutputDirectory cannot be inside a packaged source directory.'
@@ -47,13 +51,11 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 $topFiles = @(
     'README.md','LICENSE.txt','SECURITY.md','THIRD_PARTY_NOTICES.md','ENGINE_VERSION','SHA256SUMS.txt',
-    'service.bat','general.bat','general (ALT).bat','general (ALT3).bat','general (ALT5).bat',
-    'general (ALT11).bat','general (FAKE TLS AUTO ALT2).bat','diagnose discord voice.bat',
-    'compatibility wizard.bat'
+    'service.bat'
 )
-$dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
+$dirs = @('bin','lua','lists','presets','utils','strategies','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
-$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md')
+$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md', 'ADVANCED.md', 'MAINTAINING.md', 'SUPPORT.md')
 New-Item -ItemType Directory -Path (Join-Path $stage 'docs') -Force | Out-Null
 foreach ($document in $publicDocs) {
     Copy-Item -LiteralPath (Join-Path $root ('docs\' + $document)) -Destination (Join-Path $stage 'docs') -Force
@@ -61,6 +63,7 @@ foreach ($document in $publicDocs) {
 foreach ($dir in $dirs) {
     $sourceDir = Join-Path $root $dir
     foreach ($file in Get-ChildItem -LiteralPath $sourceDir -Recurse -File -Force) {
+        if ($dir -eq 'strategies' -and $file.Name -notin $strategyLaunchers) { continue }
         if ($file.Name -match '\.(?:backup|bak|tmp|old|orig|swp|download|lock|log)$' -or
             $file.Name -in @('list-general-user.txt','list-exclude-user.txt','ipset-exclude-user.txt')) { continue }
         $relative = $file.FullName.Substring($root.Length + 1)
@@ -69,12 +72,17 @@ foreach ($dir in $dirs) {
         Copy-Item -LiteralPath $file.FullName -Destination $target -Force
     }
 }
+foreach ($launcher in $strategyLaunchers) {
+    if (-not (Test-Path -LiteralPath (Join-Path $stage ('strategies\' + $launcher)) -PathType Leaf)) {
+        throw "Missing public strategy launcher: $launcher"
+    }
+}
 # Only provenance and the upstream license are shipped; developer Python
 # sources and tests stay outside the ready-to-use Windows archive.
-$telegramNoticeDir = Join-Path $stage 'third_party\tg-ws-proxy'
+$telegramNoticeDir = Join-Path $stage 'docs\third_party\tg-ws-proxy'
 New-Item -ItemType Directory -Path $telegramNoticeDir -Force | Out-Null
 foreach ($notice in @('LICENSE', 'SOURCE.json')) {
-    Copy-Item -LiteralPath (Join-Path $root "third_party\tg-ws-proxy\$notice") -Destination $telegramNoticeDir -Force
+    Copy-Item -LiteralPath (Join-Path $root "packaging\third_party\tg-ws-proxy\$notice") -Destination $telegramNoticeDir -Force
 }
 # Always ship the bundled snapshot, not the maintainer's mutable loaded list.
 Copy-Item -LiteralPath (Join-Path $stage '.service\ipset-service.txt') -Destination (Join-Path $stage 'lists\ipset-all.txt') -Force
@@ -86,9 +94,9 @@ foreach ($name in @('list-general-user.txt', 'list-exclude-user.txt', 'ipset-exc
 [IO.File]::WriteAllText((Join-Path $stage '.service\version.txt'), "$Version`r`n", [Text.Encoding]::ASCII)
 
 if ($Beta) {
-    foreach ($file in @('START BETA TEST.bat', 'BETA_GUIDE_RU.txt')) {
-        Copy-Item (Join-Path $root $file) $stage -Force
-    }
+    Copy-Item -LiteralPath (Join-Path $root 'docs\BETA_GUIDE_RU.txt') -Destination (Join-Path $stage 'docs') -Force
+} else {
+    Remove-Item -LiteralPath (Join-Path $stage 'utils\START BETA TEST.bat') -Force
 }
 
 foreach ($sourceOnlyPath in @(
@@ -115,7 +123,7 @@ foreach ($entry in $releaseModes.GetEnumerator()) {
 }
 foreach ($experimentalPreset in @(
     'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
-    'CUSTOM AGGRESSIVE.txt.in'
+    'NEXT AGGRESSIVE.txt.in'
 )) {
     Remove-Item (Join-Path $stage "presets\$experimentalPreset") -Force -ErrorAction SilentlyContinue
 }

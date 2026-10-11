@@ -14,7 +14,7 @@ if errorlevel 1 (
 )
 
 title Zapret 2 NEXT - Compatibility Wizard
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\compatibility-wizard.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0compatibility-wizard.ps1"
 set "RESULT=%ERRORLEVEL%"
 echo.
 if not "%RESULT%"=="0" (

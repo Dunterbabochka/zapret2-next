@@ -13,7 +13,7 @@ $renderer = Join-Path $PSScriptRoot 'render-config.ps1'
 $starter = Join-Path $PSScriptRoot 'invoke-winws.ps1'
 $winws = Join-Path $root 'bin\winws2.exe'
 $targetsPath = Join-Path $PSScriptRoot 'compatibility-targets.json'
-$publicPresets = @('general', 'ALT', 'ALT3', 'ALT5', 'ALT11', 'FAKE TLS AUTO ALT2')
+. (Join-Path $PSScriptRoot 'preset-catalog.ps1')
 $wizardVersion = '0.1.0-stage3'
 $resultSchema = 'zapret2-next.compatibility-results'
 $resultSchemaVersion = 1

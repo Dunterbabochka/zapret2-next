@@ -84,6 +84,12 @@ Upstream issues should also be reported to the relevant upstream project.
 
 ## Diagnostic data
 
+The automatic **Create support report** mode produces a separate allowlisted ZIP
+in `runtime/support-reports`. It excludes network addresses, process IDs, local
+paths, command lines, raw exceptions, debug logs and captures. Its local working
+directory is not included. Provider and optional region entered by the user are
+included. See [the report documentation](docs/SUPPORT.md).
+
 Compatibility Wizard and Discord Voice diagnostics may produce reports containing:
 
 - IP addresses and ports;

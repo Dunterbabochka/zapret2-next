@@ -1,4 +1,4 @@
-# Experimental only: targeted daily candidate.
+# NEXT BALANCED: public moderate-intervention strategy.
 # General actions are the moderate native Zapret 2 translation; Discord voice is isolated.
 [TCP_HTTP]
 --lua-desync=fake:blob=http_iana:tcp_ts=-1000:repeats=6

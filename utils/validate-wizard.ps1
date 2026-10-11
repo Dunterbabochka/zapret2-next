@@ -22,7 +22,7 @@ foreach ($path in $statePaths) {
     } else { '<missing>' }
 }
 
-$launcher = Join-Path $root 'compatibility wizard.bat'
+$launcher = Join-Path $PSScriptRoot 'compatibility wizard.bat'
 $wizard = Join-Path $PSScriptRoot 'compatibility-wizard.ps1'
 $targets = Join-Path $PSScriptRoot 'compatibility-targets.json'
 $builder = Join-Path $PSScriptRoot 'build-release.ps1'
@@ -50,7 +50,7 @@ if (Test-Path -LiteralPath $launcher -PathType Leaf) {
 }
 if (Test-Path -LiteralPath $builder -PathType Leaf) {
     $builderText = Get-Content -LiteralPath $builder -Raw
-    if ($builderText -notmatch [regex]::Escape("'compatibility wizard.bat'")) {
+    if ($builderText -notmatch [regex]::Escape("'utils'")) {
         Add-WizardValidationError 'The release allowlist is missing compatibility wizard.bat.'
     }
 }

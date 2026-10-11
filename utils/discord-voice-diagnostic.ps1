@@ -148,7 +148,7 @@ try {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Run diagnose discord voice.bat and approve the Administrator prompt.'
+        throw 'Run utils\diagnose discord voice.bat and approve the Administrator prompt.'
     }
 
     foreach ($path in @($renderer, $winws, (Join-Path $root "presets\$Preset.txt.in"))) {

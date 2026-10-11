@@ -87,6 +87,8 @@ goto menu
 call :get_service_status
 set "CURRENT_PRESET=none"
 for /f "tokens=2,*" %%A in ('reg query "%STATE_KEY%" /v Zapret2NextStrategy 2^>nul ^| findstr /I "Zapret2NextStrategy"') do set "CURRENT_PRESET=%%B"
+if /I "!CURRENT_PRESET!"=="CUSTOM SAFE" set "CURRENT_PRESET=NEXT SAFE"
+if /I "!CURRENT_PRESET!"=="CUSTOM BALANCED" set "CURRENT_PRESET=NEXT BALANCED"
 call :read_settings
 :: Keep the last Telegram result during navigation; explicit status/actions refresh it.
 if not defined TELEGRAM_STATUS call :read_telegram_status
@@ -148,32 +150,35 @@ exit /b
 :install_service
 cls
 call :read_settings
-echo Available presets:
 set /a count=0
-for %%P in ("general" "ALT" "ALT3" "ALT5" "ALT11" "FAKE TLS AUTO ALT2") do (
+for /L %%N in (1,1,32) do set "preset%%N="
+for %%P in ("general" "ALT" "ALT3" "ALT5" "ALT11" "ALT12" "ALT13" "EXP" "FAKE TLS AUTO ALT2") do (
   if not exist "%ROOT%\presets\%%~P.txt.in" (
-    call :red "Missing public preset: %%~P"
+    call :red "Missing Classic preset: %%~P"
     pause
     goto menu
   )
   set /a count+=1
   set "preset!count!=%%~P"
-  echo   !count!. %%~P
 )
-if exist "%ROOT%\utils\accepted_service_presets.txt" (
-  echo.
-  echo Confirmed experimental presets:
-  for /f "usebackq eol=# delims=" %%P in ("%ROOT%\utils\accepted_service_presets.txt") do (
-    if exist "%ROOT%\presets\%%P.txt.in" (
-      set /a count+=1
-      set "preset!count!=%%P"
-      set "PRESET_LABEL=confirmed experimental"
-      if /I "%%P"=="CUSTOM SAFE" set "PRESET_LABEL=recommended experimental"
-      if /I "%%P"=="ALT12" set "PRESET_LABEL=validated fallback"
-      if /I "%%P"=="CUSTOM BALANCED" set "PRESET_LABEL=stronger experimental"
-      echo   !count!. %%P [!PRESET_LABEL!]
-    )
+set "classic_count=!count!"
+set /a next_count=0
+for %%P in ("NEXT SAFE" "NEXT BALANCED") do (
+  if not exist "%ROOT%\presets\%%~P.txt.in" (
+    call :red "Missing NEXT preset: %%~P"
+    pause
+    goto menu
   )
+  set /a count+=1
+  set /a next_count+=1
+  set "preset!count!=%%~P"
+  set "nextRow!next_count!=!count!. %%~P"
+)
+echo   Classic presets                             NEXT presets
+echo   ----------------------------------------    ----------------------------
+for /L %%N in (1,1,!classic_count!) do (
+  set "PRESET_ROW=  %%N. !preset%%N!                                            "
+  echo !PRESET_ROW:~0,46!!nextRow%%N!
 )
 echo.
 set "pick="
@@ -462,6 +467,34 @@ exit /b 0
 cls
 echo Zapret 2 NEXT diagnostics
 echo -----------------------------------------------
+echo   1. Quick check
+echo   2. Create support report (automatic)
+echo   3. Compatibility Wizard (advanced)
+echo   4. Discord Voice diagnostic (advanced)
+echo   0. Back
+set "diagnostic_choice="
+set /p "diagnostic_choice=Select option (0-4): "
+if "!diagnostic_choice!"=="0" goto menu
+if "!diagnostic_choice!"=="1" goto quick_diagnostics
+if "!diagnostic_choice!"=="2" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\support-diagnostics.ps1"
+  pause
+  goto diagnostics
+)
+if "!diagnostic_choice!"=="3" (
+  call "%ROOT%\utils\compatibility wizard.bat"
+  goto diagnostics
+)
+if "!diagnostic_choice!"=="4" (
+  call "%ROOT%\utils\diagnose discord voice.bat"
+  goto diagnostics
+)
+goto diagnostics
+
+:quick_diagnostics
+cls
+echo Zapret 2 NEXT diagnostics
+echo -----------------------------------------------
 fltmc >nul 2>&1 && (call :green "Administrator rights: OK") || call :red "Administrator rights: missing"
 for %%F in ("%ROOT%\bin\winws2.exe" "%ROOT%\bin\cygwin1.dll" "%ROOT%\bin\WinDivert.dll" "%ROOT%\bin\WinDivert64.sys" "%ROOT%\lua\zapret-lib.lua" "%ROOT%\lua\zapret-antidpi.lua") do (
   if exist %%F (echo [OK] %%~nxF) else call :red "Missing %%~nxF"
@@ -477,7 +510,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-telegra
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\validate.ps1" -Quick
 echo.
 pause
-goto menu
+goto diagnostics
 
 :tests
 start "Zapret 2 NEXT tests" powershell -NoExit -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\test-presets.ps1"
@@ -487,7 +520,7 @@ goto menu
 sc query "%SERVICE_NAME%" >nul 2>&1
 if errorlevel 1 (
   tasklist /FI "IMAGENAME eq winws2.exe" 2>nul | findstr /I "winws2.exe" >nul
-  if not errorlevel 1 call :yellow "A manual winws2 process is running. Stop it and rerun its general*.bat launcher to apply this change."
+  if not errorlevel 1 call :yellow "A manual winws2 process is running. Stop it and rerun its strategies\general*.bat launcher to apply this change."
   exit /b 0
 )
 set "ACTIVE="

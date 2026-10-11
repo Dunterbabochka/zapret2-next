@@ -16,7 +16,7 @@ import uuid
 from contextlib import suppress
 
 if not getattr(sys, "frozen", False):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "third_party" / "tg-ws-proxy"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packaging" / "third_party" / "tg-ws-proxy"))
 
 from proxy import __version__ as upstream_version
 from proxy.config import proxy_config, CFPROXY_DEFAULT_DOMAINS

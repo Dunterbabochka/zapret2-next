@@ -121,7 +121,7 @@ try {
     Add-ValidationError "Telegram runtime integrity failed: $($_.Exception.Message)"
 }
 if ($serviceContent -notmatch ':get_service_status' -or
-    $serviceContent -notmatch 'Get-Service -Name' -or
+    $serviceContent -notmatch 'sc\.exe query' -or
     $serviceContent -notmatch 'manage-service\.ps1') {
     Add-ValidationError 'The service manager must use locale-independent status reads and wait for stop/start transitions.'
 }
@@ -174,6 +174,9 @@ if ($releaseBuilderAvailable) {
 $fakePayloadHashes = [ordered]@{
     'quic_initial_steamcommunity_com.bin' = '2FE18B3BD20807D36704D0B072092EE49AE84EDCA907A4420AB9A0F0F28FDDCF'
     'quic_initial_dbankcloud_ru_v2.bin' = 'E065870CB0D13152E6132807BBF42218A9E7CD8D96F5602B61674CC540F3A56E'
+    'tls_clienthello_sochi_park.bin' = 'AD552922ACFE029521DA884EA29F4BB28BB6BDCEE9B1A70B46ADBFD266C11D4D'
+    'stun2.bin' = 'B7C2497496039C541F7337AC8536813F0A1CF52363AB2FAA5213B7816D458813'
+    'quic_initial_4pda_to.bin' = 'E065870CB0D13152E6132807BBF42218A9E7CD8D96F5602B61674CC540F3A56E'
 }
 $sumContent = Get-Content -LiteralPath (Join-Path $root 'SHA256SUMS.txt') -Raw
 foreach ($fakePayload in $fakePayloadHashes.GetEnumerator()) {
@@ -190,35 +193,9 @@ foreach ($fakePayload in $fakePayloadHashes.GetEnumerator()) {
         Add-ValidationError "SHA256SUMS.txt is missing opt-in UDP fake payload: $($fakePayload.Key)"
     }
 }
-if ($serviceContent -notmatch 'accepted_service_presets\.txt' -or
-    $serviceContent -notmatch 'Confirmed experimental presets' -or
-    $serviceContent -notmatch 'CUSTOM SAFE' -or
-    $serviceContent -notmatch 'ALT12' -or
-    $serviceContent -notmatch 'CUSTOM BALANCED') {
-    Add-ValidationError 'The service menu must expose the confirmed public experimental preset marker and its SAFE/ALT12/BALANCED labels.'
-}
-$acceptedServiceMarkerPath = Join-Path $PSScriptRoot 'accepted_service_presets.txt'
-if (Test-Path -LiteralPath $acceptedServiceMarkerPath -PathType Leaf) {
-    $acceptedServiceNames = @((Get-Content -LiteralPath $acceptedServiceMarkerPath) |
-        ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -and -not $_.StartsWith('#') })
-    $acceptedServiceAllowed = @('CUSTOM SAFE', 'ALT12', 'CUSTOM BALANCED')
-    foreach ($acceptedServiceName in $acceptedServiceNames) {
-        if ($acceptedServiceAllowed -notcontains $acceptedServiceName) {
-            Add-ValidationError "Unknown or unconfirmed public service preset: $acceptedServiceName"
-            continue
-        }
-        $acceptedServicePresetPath = Join-Path $presetDir ($acceptedServiceName + '.txt.in')
-        if (-not (Test-Path -LiteralPath $acceptedServicePresetPath -PathType Leaf)) {
-            Add-ValidationError "Confirmed public service preset is missing its template: $acceptedServiceName"
-        }
-    }
-    if (@($acceptedServiceNames | Sort-Object -Unique).Count -ne $acceptedServiceNames.Count) {
-        Add-ValidationError 'accepted_service_presets.txt must not contain duplicate preset names.'
-    }
-    if ($acceptedServiceNames -contains 'CUSTOM AGGRESSIVE') {
-        Add-ValidationError 'CUSTOM AGGRESSIVE must remain out of the public service marker until voice acceptance exists.'
-    }
+if ($serviceContent -notmatch 'Classic presets' -or $serviceContent -notmatch 'NEXT presets' -or
+    $serviceContent -match 'Confirmed experimental presets|NEXT AGGRESSIVE') {
+    Add-ValidationError 'Service selection must expose Classic and NEXT columns and keep AGGRESSIVE private.'
 }
 $ipsetMenuBlock = [regex]::Match($serviceContent, '(?ms)^:ipset_filter\r?\n.*?(?=^:[A-Za-z_]+\r?$)').Value
 if ($ipsetMenuBlock -notmatch 'utils\\ipset_filter\.mode') {
@@ -244,7 +221,7 @@ $discordWebEntries = if (Test-Path -LiteralPath $discordWebListPath -PathType Le
 } else {
     @()
 }
-$customPresetFilesPresent = @('CUSTOM SAFE.txt.in', 'CUSTOM BALANCED.txt.in', 'CUSTOM AGGRESSIVE.txt.in' |
+$customPresetFilesPresent = @('NEXT SAFE.txt.in', 'NEXT BALANCED.txt.in', 'NEXT AGGRESSIVE.txt.in' |
     Where-Object { Test-Path -LiteralPath (Join-Path $presetDir $_) -PathType Leaf }).Count -gt 0
 if ($customPresetFilesPresent) {
     foreach ($requiredDiscordWebDomain in @('discord.com', 'gateway.discord.gg', 'cdn.discordapp.com', 'updates.discord.com')) {
@@ -257,7 +234,8 @@ $loadedIPSetPath = Join-Path $root 'lists\ipset-all.txt'
 $loadedIPSetHasEntries = (Test-Path -LiteralPath $loadedIPSetPath -PathType Leaf) -and
     @((Get-Content -LiteralPath $loadedIPSetPath) | Where-Object { $_ -notmatch '^\s*(?:#|$)' }).Count -gt 0
 
-$publicPresetNames = @('general', 'ALT', 'ALT3', 'ALT5', 'ALT11', 'FAKE TLS AUTO ALT2')
+. (Join-Path $PSScriptRoot 'preset-catalog.ps1')
+$publicPresetNames = $publicPresets
 $presets = foreach ($name in $publicPresetNames) {
     $path = Join-Path $presetDir "$name.txt.in"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -272,16 +250,20 @@ if ($presets.Count -ne $publicPresetNames.Count) {
 
 $expectedPublicLaunchers = @(
     'general.bat', 'general (ALT).bat', 'general (ALT3).bat', 'general (ALT5).bat',
-    'general (ALT11).bat', 'general (FAKE TLS AUTO ALT2).bat'
+    'general (ALT11).bat', 'general (ALT12).bat', 'general (ALT13).bat', 'general (EXP).bat',
+    'general (FAKE TLS AUTO ALT2).bat', 'general (NEXT SAFE).bat', 'general (NEXT BALANCED).bat'
 )
-$rootBatches = @(Get-ChildItem -LiteralPath $root -Filter '*.bat' -File | Select-Object -ExpandProperty Name)
+$strategyDir = Join-Path $root 'strategies'
+$rootOnlyBatches = @(Get-ChildItem -LiteralPath $root -Filter '*.bat' -File | ForEach-Object Name)
+if ($rootOnlyBatches.Count -ne 1 -or $rootOnlyBatches[0] -ne 'service.bat') { Add-ValidationError 'Only service.bat may be a root launcher.' }
+$rootBatches = @(Get-ChildItem -LiteralPath $strategyDir -Filter '*.bat' -File | Select-Object -ExpandProperty Name)
 foreach ($launcher in $expectedPublicLaunchers) {
     if ($rootBatches -notcontains $launcher) { Add-ValidationError "Missing public launcher: $launcher" }
 }
-foreach ($experimentalLauncher in @('general (ALT12).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
+foreach ($experimentalLauncher in @('general (NEXT AGGRESSIVE).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
     if ($rootBatches -contains $experimentalLauncher) { Add-ValidationError "Experimental launcher must not be public: $experimentalLauncher" }
 }
-if ($rootBatches -notcontains 'diagnose discord voice.bat') {
+if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'diagnose discord voice.bat'))) {
     Add-ValidationError 'The Discord voice diagnostic launcher is missing.'
 }
 $voiceDiagnosticContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'discord-voice-diagnostic.ps1') -Raw
@@ -301,36 +283,33 @@ $releaseBuilderPath = Join-Path $PSScriptRoot 'build-release.ps1'
 $releaseBuilderAvailable = Test-Path -LiteralPath $releaseBuilderPath -PathType Leaf
 $releaseBuilder = if ($releaseBuilderAvailable) { Get-Content -LiteralPath $releaseBuilderPath -Raw } else { '' }
 if ($releaseBuilderAvailable) {
-    foreach ($requiredReleaseFile in @($expectedPublicLaunchers + 'diagnose discord voice.bat')) {
+    foreach ($requiredReleaseFile in @('strategies', 'utils')) {
         if ($releaseBuilder -notmatch [regex]::Escape("'$requiredReleaseFile'")) {
             Add-ValidationError "Release allowlist is missing: $requiredReleaseFile"
         }
     }
-    foreach ($excludedReleaseFile in @('general (ALT12).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
+    foreach ($excludedReleaseFile in @('general (NEXT AGGRESSIVE).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
         if ($releaseBuilder -match [regex]::Escape("'$excludedReleaseFile'")) {
             Add-ValidationError "Release allowlist includes an experimental launcher: $excludedReleaseFile"
         }
     }
     foreach ($excludedPreset in @(
         'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
-        'CUSTOM AGGRESSIVE.txt.in'
+        'NEXT AGGRESSIVE.txt.in'
     )) {
         if ($releaseBuilder -notmatch [regex]::Escape("'$excludedPreset'")) {
             Add-ValidationError "Release builder must remove unsupported experimental preset: $excludedPreset"
         }
     }
-    foreach ($publishedExperimentalPreset in @('ALT12.txt.in', 'CUSTOM SAFE.txt.in', 'CUSTOM BALANCED.txt.in')) {
+    foreach ($publishedExperimentalPreset in @('ALT12.txt.in', 'NEXT SAFE.txt.in', 'NEXT BALANCED.txt.in')) {
         if ($releaseBuilder -match [regex]::Escape("'$publishedExperimentalPreset'")) {
-            Add-ValidationError "Release builder must retain confirmed public experimental preset: $publishedExperimentalPreset"
+            Add-ValidationError "Release builder must retain public preset: $publishedExperimentalPreset"
         }
     }
 }
 
-if ($releaseBuilderAvailable -and $releaseBuilder -match 'accepted_service_presets\.txt') {
-    Add-ValidationError 'Release builder must retain the confirmed public service marker.'
-}
 if ($releaseBuilderAvailable -and $releaseBuilder -match 'list-discord-web\.txt') {
-    Add-ValidationError 'Release builder must retain the CUSTOM Discord Web hostlist.'
+    Add-ValidationError 'Release builder must retain the NEXT Discord Web hostlist.'
 }
 if ($releaseBuilderAvailable -and ($releaseBuilder -notmatch 'ipset-all\.txt\.backup' -or $releaseBuilder -notmatch 'The package must not inherit mutable owner settings')) {
     Add-ValidationError 'Release builder must remove the IPSet backup and reset mutable mode files.'
@@ -445,15 +424,14 @@ if (Test-Path -LiteralPath $alt12Path -PathType Leaf) {
     }
 }
 
-# The Discord Web scope is intentionally experimental. Public presets must keep
-# their previous hostlist set and must not reference the CUSTOM-only list.
-foreach ($publicPreset in $publicPresetNames) {
+# Classic strategies retain their hostlists; NEXT has an explicit Discord Web scope.
+foreach ($publicPreset in $classicPresets) {
     $publicOutput = Join-Path $runtimeDir (('public-{0}-behavior.txt' -f ($publicPreset -replace ' ', '_')))
     try {
         & $renderer -Preset $publicPreset -Output $publicOutput -GameMode off -IPSetMode loaded -VoiceMode compatible | Out-Null
         $publicContent = Get-Content -LiteralPath $publicOutput -Raw
         if ($publicContent -match 'list-discord-web\.txt') {
-            Add-ValidationError "$publicPreset unexpectedly references the CUSTOM-only Discord Web hostlist."
+            Add-ValidationError "$publicPreset unexpectedly references the NEXT-only Discord Web hostlist."
         }
     } catch {
         Add-ValidationError "$publicPreset public-behavior render failed: $($_.Exception.Message)"
@@ -462,7 +440,7 @@ foreach ($publicPreset in $publicPresetNames) {
 
 $customDefinitions = @(
     [pscustomobject]@{
-        Name = 'CUSTOM SAFE'
+        Name = 'NEXT SAFE'
         RequireTlsMax = $false
         RequirePort8443 = $false
         MaxRepeats = 4
@@ -479,7 +457,7 @@ $customDefinitions = @(
         )
     }
     [pscustomobject]@{
-        Name = 'CUSTOM BALANCED'
+        Name = 'NEXT BALANCED'
         RequireTlsMax = $false
         RequirePort8443 = $true
         MaxRepeats = 8
@@ -497,7 +475,7 @@ $customDefinitions = @(
         )
     }
     [pscustomobject]@{
-        Name = 'CUSTOM AGGRESSIVE'
+        Name = 'NEXT AGGRESSIVE'
         RequireTlsMax = $true
         RequirePort8443 = $true
         MaxRepeats = 11
@@ -512,7 +490,7 @@ $customDefinitions = @(
     }
 )
 $releaseBuilderForCustom = $releaseBuilder
-$customRootBatches = @(Get-ChildItem -LiteralPath $root -Filter '*.bat' -File |
+$customRootBatches = @(Get-ChildItem -LiteralPath $strategyDir -Filter '*.bat' -File |
     Select-Object -ExpandProperty Name)
 $customStaticCount = @($customDefinitions | Where-Object {
     Test-Path -LiteralPath (Join-Path $presetDir ($_.Name + '.txt.in')) -PathType Leaf
@@ -520,13 +498,13 @@ $customStaticCount = @($customDefinitions | Where-Object {
 $expectedCustomNames = if ($releaseBuilderAvailable) {
     @($customDefinitions | ForEach-Object Name)
 } else {
-    @('CUSTOM SAFE', 'CUSTOM BALANCED')
+    @('NEXT SAFE', 'NEXT BALANCED')
 }
 foreach ($definition in $customDefinitions) {
     $customPath = Join-Path $presetDir ($definition.Name + '.txt.in')
     if (-not (Test-Path -LiteralPath $customPath -PathType Leaf)) {
         if ($expectedCustomNames -contains $definition.Name) {
-            Add-ValidationError ('Missing expected CUSTOM preset: {0}' -f $definition.Name)
+            Add-ValidationError ('Missing expected NEXT preset: {0}' -f $definition.Name)
         }
         continue
     }
@@ -571,11 +549,11 @@ foreach ($definition in $customDefinitions) {
     if ($customTemplate -notmatch '(?m)^\[DISCORD_MEDIA_TLS\]') {
         Add-ValidationError ('{0} does not define a Discord media profile.' -f $definition.Name)
     }
-    if (@($customRootBatches | Where-Object { $_ -like ($definition.Name + '*') }).Count -gt 0) {
+    if ($definition.Name -eq 'NEXT AGGRESSIVE' -and $customRootBatches -contains 'general (NEXT AGGRESSIVE).bat') {
         Add-ValidationError ('{0} must not have a public launcher.' -f $definition.Name)
     }
     $customTemplateToken = [regex]::Escape($definition.Name + '.txt.in')
-    if ($definition.Name -in @('CUSTOM SAFE', 'CUSTOM BALANCED')) {
+    if ($definition.Name -in @('NEXT SAFE', 'NEXT BALANCED')) {
         if ($releaseBuilderForCustom -match $customTemplateToken) {
             Add-ValidationError ('Release builder must retain confirmed public preset: {0}' -f $definition.Name)
         }
@@ -596,7 +574,7 @@ foreach ($definition in $customDefinitions) {
             Add-ValidationError ('{0} contains an unscoped all-UDP/all-port fallback.' -f $definition.Name)
         }
         if ($customContent -notmatch 'list-discord-web\.txt') {
-            Add-ValidationError ('{0} is missing the CUSTOM-only Discord Web hostlist.' -f $definition.Name)
+            Add-ValidationError ('{0} is missing the NEXT-only Discord Web hostlist.' -f $definition.Name)
         }
         $customBlocks = @($customContent -split '(?m)^--new\r?$' | Where-Object { $_ -match '--lua-desync=' })
         foreach ($block in $customBlocks) {
@@ -609,8 +587,8 @@ foreach ($definition in $customDefinitions) {
         if (@($repeats | Where-Object { $_ -gt $definition.MaxRepeats }).Count -gt 0) {
             Add-ValidationError ('{0} exceeds its declared repeat budget.' -f $definition.Name)
         }
-        if ($definition.Name -eq 'CUSTOM SAFE' -and $customContent -match 'seqovl=664') {
-            Add-ValidationError 'CUSTOM SAFE must not use the ALT12 tls_max overlap value.'
+        if ($definition.Name -eq 'NEXT SAFE' -and $customContent -match 'seqovl=664') {
+            Add-ValidationError 'NEXT SAFE must not use the ALT12 tls_max overlap value.'
         }
         $expectedCustomVoice = @(
             '--filter-udp=19294-19344,50000-50100'
@@ -642,12 +620,12 @@ foreach ($definition in $customDefinitions) {
 $customHarnessPath = Join-Path $PSScriptRoot 'test-custom-presets.ps1'
 if (-not (Test-Path -LiteralPath $customHarnessPath -PathType Leaf)) {
     if ($customStaticCount -gt 0 -and $releaseBuilderAvailable) {
-        Add-ValidationError 'The deterministic CUSTOM A/B harness is missing from the source tree.'
+        Add-ValidationError 'The deterministic NEXT A/B harness is missing from the source tree.'
     }
 } else {
     $customHarnessText = Get-Content -LiteralPath $customHarnessPath -Raw
     foreach ($token in @(
-        'DIRECT NO ZAPRET', 'CUSTOM SAFE', 'CUSTOM BALANCED', 'CUSTOM AGGRESSIVE',
+        'DIRECT NO ZAPRET', 'NEXT SAFE', 'NEXT BALANCED', 'NEXT AGGRESSIVE',
         'GoogleMain', 'GoogleGstatic', '--http3-only', '--noproxy',
         'ProfileIds', 'ActualLuaActions', 'MandatoryEvidencePassed',
         '%{remote_ip}', '%{remote_port}', 'ProfileNotFoundCount',
@@ -656,24 +634,24 @@ if (-not (Test-Path -LiteralPath $customHarnessPath -PathType Leaf)) {
         'YouTubeQuicObserved', 'ProbeAvailable', 'CurlSupportsHttp3',
         'DiscordUpdates', 'YouTubeVideoRedirect', 'ConfirmNetworkTest',
         'AllowEmptyIPSet', 'AllowContaminatedNetwork', 'Restore-OriginalState',
-        'TieBreakPolicy', "'CUSTOM SAFE' = 0", "'ALT12' = 1"
+        'TieBreakPolicy', "'NEXT SAFE' = 0", "'ALT12' = 1"
     )) {
         if ($customHarnessText -notmatch [regex]::Escape($token)) {
-            Add-ValidationError ('The CUSTOM A/B contract is missing: {0}' -f $token)
+            Add-ValidationError ('The NEXT A/B contract is missing: {0}' -f $token)
         }
     }
     if ($customHarnessText -notmatch '\$mandatoryPassed\s+-eq\s+\$mandatoryRows\.Count' -or
         $customHarnessText -notmatch '\$mandatoryEvidencePassed\s+-eq\s+\$mandatoryRows\.Count') {
-        Add-ValidationError 'The CUSTOM A/B winner must require complete mandatory transport and profile/action evidence.'
+        Add-ValidationError 'The NEXT A/B winner must require complete mandatory transport and profile/action evidence.'
     }
     try {
         $customSelfTestOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $customHarnessPath -SelfTest 2>&1
         $customSelfTestOutput | Out-Host
         if ($LASTEXITCODE -ne 0) {
-            throw "CUSTOM A/B self-test exited with code $LASTEXITCODE."
+            throw "NEXT A/B self-test exited with code $LASTEXITCODE."
         }
     } catch {
-        Add-ValidationError ('The CUSTOM A/B self-test failed: {0}' -f $_.Exception.Message)
+        Add-ValidationError ('The NEXT A/B self-test failed: {0}' -f $_.Exception.Message)
     }
 }
 
@@ -727,7 +705,9 @@ foreach ($gameMode in $gameModes) {
                 if ($gameUdpProfile.Count -eq 0 -or $gameUdpProfile[0] -ne "--filter-udp=$expectedUdp") {
                     Add-ValidationError "$label has the wrong Game UDP profile."
                 }
-                if ($gameUdpProfile -notcontains '--lua-desync=fake:blob=game_udp:repeats=10:payload=all') {
+                if (($name -ne 'EXP' -and $gameUdpProfile -notcontains '--lua-desync=fake:blob=game_udp:repeats=10:payload=all') -or
+                    ($name -eq 'EXP' -and ($gameUdpProfile -notcontains '--lua-desync=fake:blob=game_udp:repeats=5:payload=all' -or
+                    $gameUdpProfile -notcontains '--lua-desync=fake:blob=quic_4pda:repeats=5:payload=all'))) {
                     Add-ValidationError "$label does not keep the Game UDP fake independent from Discord Voice."
                 }
 
@@ -758,6 +738,12 @@ foreach ($gameMode in $gameModes) {
                         )
                     }
                 }
+                $presetTemplate = Get-Content -LiteralPath $preset.FullName -Raw
+                $hasPresetVoice = $presetTemplate -match '(?m)^\[VOICE_COMPATIBLE\]'
+                if ($voiceMode -eq 'compatible' -and $hasPresetVoice) {
+                    $voiceSection = [regex]::Match($presetTemplate, '(?ms)^\[VOICE_COMPATIBLE\]\r?\n(.*?)(?=^\[|\z)').Groups[1].Value
+                    $expectedVoiceProfile = @($voiceSection -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') })
+                }
                 $voiceMarker = '# Discord Voice (must stay before the Game UDP fallback)'
                 $voiceProfile = @(Get-ProfileLines -Content $content -Marker $voiceMarker)
                 if (($voiceProfile -join "`n") -cne ($expectedVoiceProfile -join "`n")) {
@@ -769,7 +755,7 @@ foreach ($gameMode in $gameModes) {
                     Add-ValidationError "$label does not keep Discord Voice before the Game UDP fallback."
                 }
 
-                $expectedWfUdp = if ($voiceMode -eq 'compatible' -or $gameMode -in @('udp', 'all')) {
+                $expectedWfUdp = if (($voiceMode -eq 'compatible' -and -not $hasPresetVoice) -or $gameMode -in @('udp', 'all')) {
                     '1024-65535'
                 } else {
                     "443,19294-19344,50000-50100,$expectedUdp"
@@ -896,7 +882,7 @@ $sourceFiles = @(Get-ChildItem -LiteralPath $root -File -Force) + @(
         ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Recurse -File }
 )
 $brandingPattern = 'Flowseal|zapret-discord-youtube|vpndiscordyooutube|bypassblock|zapretvpns'
-$telegramCreditPaths = @((Join-Path $root 'README.md'), (Join-Path $root 'docs\TELEGRAM.md'))
+$telegramCreditPaths = @((Join-Path $root 'README.md'), (Join-Path $root 'docs\TELEGRAM.md'), (Join-Path $root 'docs\ADVANCED.md'))
 $forbidden = $sourceFiles |
     Where-Object {
         $_.FullName -notmatch '[\\/](runtime|Results|dist)[\\/]' -and
@@ -908,7 +894,10 @@ $forbidden = $sourceFiles |
 foreach ($hit in $forbidden) {
     $brandingLine = $hit.Line
     if ($hit.Path -in $telegramCreditPaths) {
-        # Credit the bundled Telegram upstream without allowing unrelated branding.
+        # Credit the bundled upstreams without allowing unrelated branding.
+        if ($hit.Path -in @((Join-Path $root 'README.md'), (Join-Path $root 'docs\ADVANCED.md'))) {
+            $brandingLine = $brandingLine -replace '^(\*\*Classic\*\*.*)Flowseal(\. \*\*NEXT\*\*.*)$', '$1$2'
+        }
         $brandingLine = $brandingLine -replace '(?i)https://github\.com/Flowseal/tg-ws-proxy\b', ''
         $brandingLine = $brandingLine -replace '(?i)\bFlowseal(?:/tg-ws-proxy|''s tg-ws-proxy)\b', ''
     }
@@ -923,5 +912,5 @@ if ($errors.Count -gt 0) {
 }
 Write-Host "Validation passed: $($presets.Count) presets, $renderCount configurations (Game: $($gameModes -join ', '); IPSet: $($ipsetModes -join ', '); Voice: $($voiceModes -join ', '))." -ForegroundColor Green
 Write-Host "UDP fake selector combinations inspected: $fakeRenderCount." -ForegroundColor Green
-Write-Host ('CUSTOM static candidates inspected: ' + $customStaticCount) -ForegroundColor DarkGray
+Write-Host ('NEXT static candidates inspected: ' + $customStaticCount) -ForegroundColor DarkGray
 exit 0

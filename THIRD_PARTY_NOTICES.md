@@ -26,6 +26,16 @@ The `zendesk.com` and `live-video.net` hostlist entries were carried over while
 preserving this project's existing entries. No additional engine binary or
 Zapret 1 command-line preset was imported during that comparison.
 
+On 2026-10-11, ALT13 and EXP were adapted from the local Flowseal 1.10.3
+reference to native Zapret 2 Lua actions. `lua/zapret-next.lua` derives the
+legacy altorder=1 host splitting sequence from bol-van's MIT-licensed
+`hostfakesplit`; the pinned upstream Lua files are unchanged. The following
+additional payloads were copied byte-for-byte from that reference:
+
+- `tls_clienthello_sochi_park.bin`: SHA256 `AD552922ACFE029521DA884EA29F4BB28BB6BDCEE9B1A70B46ADBFD266C11D4D`.
+- `stun2.bin`: SHA256 `B7C2497496039C541F7337AC8536813F0A1CF52363AB2FAA5213B7816D458813`.
+- `quic_initial_4pda_to.bin`: SHA256 `E065870CB0D13152E6132807BBF42218A9E7CD8D96F5602B61674CC540F3A56E`.
+
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
@@ -55,7 +65,8 @@ MTProto-to-WebSocket proxy core from `tg-ws-proxy` v1.11.1, pinned to commit
 `18175fb4fe567cf6aef61f9d883eff010c9e66a8`. This bundle provides its own launcher,
 configuration, diagnostics and Windows logon task management. The original MIT
 copyright and permission notice is preserved in
-`third_party/tg-ws-proxy/LICENSE`; its text accompanies the released component.
+`packaging/third_party/tg-ws-proxy/LICENSE` in the source checkout
+(or `docs/third_party/tg-ws-proxy/LICENSE` in a release archive); its text accompanies the released component.
 
 The frozen executable includes CPython, governed by the Python Software
 Foundation License, and cryptography dependencies distributed under their own

@@ -66,7 +66,7 @@ Telegram Desktop
 
 ## Исходники и сборка компонента
 
-Используется закреплённое ядро `tg-ws-proxy` v1.11.1, commit `18175fb4fe567cf6aef61f9d883eff010c9e66a8`. Исходники находятся в `third_party/tg-ws-proxy`; сведения об авторстве и лицензии — в [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md), исходный текст MIT — в `third_party/tg-ws-proxy/LICENSE`.
+Используется закреплённое ядро `tg-ws-proxy` v1.11.1, commit `18175fb4fe567cf6aef61f9d883eff010c9e66a8`. Исходники находятся в `packaging/third_party/tg-ws-proxy`; сведения об авторстве и лицензии — в [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md), исходный текст MIT — в `packaging/third_party/tg-ws-proxy/LICENSE`.
 
 Для разработчиков в исходном репозитории:
 
