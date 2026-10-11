@@ -14,6 +14,6 @@ Fooling and packet-range boundaries are the existing native Lua parameters shown
 ## Fixed first-iteration scope and fooling ledger
 
 - Every TCP fake in these candidates uses tcp_ts=-1000. Every multisplit uses tcp_ts_up; SAFE and BALANCED use the zero overlap pattern, while AGGRESSIVE uses the documented tls_max overlap pattern.
-- General HTTP, general TLS, Google/YouTube TLS, Discord media TLS and IPSet TCP profiles use out-range=-d10. QUIC and IPSet UDP use out-range=-d5. Optional game profiles remain disabled by the port-12 sentinel; their ranges are -d4 if explicitly enabled in a separate game test.
+- General HTTP, general TLS, Google/YouTube TLS, Discord media TLS and IPSet TCP profiles use out-range=-d10. QUIC and IPSet UDP use out-range=-d5. Optional game profiles remain disabled by the port-12 sentinel; when explicitly enabled in a separate game test, Game TCP uses out-range=-d4 and Game UDP uses out-range=-n4.
 - Discord Voice is scoped to UDP 19294-19344 and 50000-50100 plus discord/stun L7 and discovery/STUN payload filters. It has no broad UDP fallback and must be evaluated only through a fresh connection.
 - SAFE changes the low-intervention fake/repeat/split group, BALANCED changes the moderate repeat/split group, and AGGRESSIVE changes the tls_max/repeat/overlap group. A later iteration must change only one of these groups and add a dated result row rather than silently rewriting this baseline.

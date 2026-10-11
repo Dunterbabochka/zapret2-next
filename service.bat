@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 set "SERVICE_NAME=winws2"
+set "TELEGRAM_STATUS="
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "VERSION=unknown"
@@ -26,8 +27,8 @@ if errorlevel 1 (
 mode con: cols=110 lines=40 >nul 2>&1
 
 :menu
-cls
 call :read_status
+cls
 echo.
 echo   ZAPRET 2 NEXT SERVICE MANAGER v%VERSION%
 echo   Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!
@@ -86,13 +87,18 @@ goto menu
 call :get_service_status
 set "CURRENT_PRESET=none"
 for /f "tokens=2,*" %%A in ('reg query "%STATE_KEY%" /v Zapret2NextStrategy 2^>nul ^| findstr /I "Zapret2NextStrategy"') do set "CURRENT_PRESET=%%B"
+call :read_settings
+:: Keep the last Telegram result during navigation; explicit status/actions refresh it.
+if not defined TELEGRAM_STATUS call :read_telegram_status
+exit /b
+
+:read_settings
 set "GAME_MODE=off"
 if exist "%ROOT%\utils\game_filter.mode" set /p GAME_MODE=<"%ROOT%\utils\game_filter.mode"
 if exist "%ROOT%\utils\check_updates.enabled" (set "UPDATE_MODE=enabled") else (set "UPDATE_MODE=disabled")
 call :read_ipset_mode
 call :read_voice_mode
 call :read_fake_modes
-call :read_telegram_status
 exit /b
 
 :read_telegram_status
@@ -103,7 +109,19 @@ exit /b
 
 :get_service_status
 set "SERVICE_STATUS=not installed"
-for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "$service = Get-Service -Name '%SERVICE_NAME%' -ErrorAction SilentlyContinue; if ($service) { $service.Status.ToString() }" 2^>nul`) do set "SERVICE_STATUS=%%S"
+:: Use numeric states regardless of Windows language; skip exit-code fields like (0x1).
+for /f "tokens=3,4" %%S in ('sc.exe query "%SERVICE_NAME%" 2^>nul') do (
+  set "SERVICE_FIELD=%%T"
+  if defined SERVICE_FIELD if not "!SERVICE_FIELD:~0,1!"=="(" (
+    if "%%S"=="1" set "SERVICE_STATUS=Stopped"
+    if "%%S"=="2" set "SERVICE_STATUS=StartPending"
+    if "%%S"=="3" set "SERVICE_STATUS=StopPending"
+    if "%%S"=="4" set "SERVICE_STATUS=Running"
+    if "%%S"=="5" set "SERVICE_STATUS=ContinuePending"
+    if "%%S"=="6" set "SERVICE_STATUS=PausePending"
+    if "%%S"=="7" set "SERVICE_STATUS=Paused"
+  )
+)
 exit /b
 
 :read_ipset_mode
@@ -129,7 +147,7 @@ exit /b
 
 :install_service
 cls
-call :read_status
+call :read_settings
 echo Available presets:
 set /a count=0
 for %%P in ("general" "ALT" "ALT3" "ALT5" "ALT11" "FAKE TLS AUTO ALT2") do (
@@ -198,6 +216,7 @@ goto menu
 
 :show_status
 cls
+call :read_telegram_status
 call :read_status
 echo Service name:       %SERVICE_NAME%
 echo Service state:      !SERVICE_STATUS!
@@ -343,6 +362,7 @@ goto menu
 :telegram
 cls
 if not exist "%ROOT%\utils\manage-telegram.ps1" (
+  call :read_telegram_status
   call :red "Telegram manager is missing. Download the complete release archive."
   pause
   goto menu
@@ -352,6 +372,7 @@ if errorlevel 1 (
   call :yellow "Telegram manager failed; see the messages above."
   pause
 )
+call :read_telegram_status
 goto menu
 
 :update_toggle
@@ -449,6 +470,7 @@ sc query BFE 2>nul | findstr /I "RUNNING" >nul && (call :green "Base Filtering E
 netsh interface tcp show global | findstr /I "timestamps enabled" >nul && (call :green "TCP timestamps: enabled") || call :yellow "TCP timestamps: not reported as enabled"
 for /f "tokens=3" %%P in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable 2^>nul ^| findstr /I "ProxyEnable"') do if not "%%P"=="0x0" call :yellow "System proxy is enabled"
 for %%S in (KillerNetworkService SmartByteNetworkService TracSrvWrapper) do sc query "%%S" >nul 2>&1 && call :yellow "Potential conflicting service: %%S"
+call :read_telegram_status
 call :read_status
 echo Service: !SERVICE_STATUS!, strategy: !CURRENT_PRESET!, game: !GAME_MODE!, ipset: !IPSET_MODE!, voice: !VOICE_MODE!
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-telegram.ps1" -Action Status

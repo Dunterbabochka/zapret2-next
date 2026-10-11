@@ -53,7 +53,7 @@ $topFiles = @(
 )
 $dirs = @('bin','lua','lists','presets','utils','windivert.filter','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
-$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'CUSTOM-PRESETS.md', 'TELEGRAM.md')
+$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md')
 New-Item -ItemType Directory -Path (Join-Path $stage 'docs') -Force | Out-Null
 foreach ($document in $publicDocs) {
     Copy-Item -LiteralPath (Join-Path $root ('docs\' + $document)) -Destination (Join-Path $stage 'docs') -Force

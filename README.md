@@ -240,7 +240,6 @@ git push origin v0.5.0-beta.1
 
 Подробности:
 
-- [Описание экспериментальных профилей](docs/CUSTOM-PRESETS.md)
 - [Таблица их параметров](docs/CUSTOM-PARAMETERS.md)
 
 ---
@@ -597,8 +596,6 @@ Release этот скрипт не включается.
 
 ## Документация
 
-- [Памятка по публикации проекта](https://github.com/Dunterbabochka/zapret2-next/blob/main/docs/LAUNCH.md)
-- [Экспериментальные профили](docs/CUSTOM-PRESETS.md)
 - [Параметры экспериментальных профилей](docs/CUSTOM-PARAMETERS.md)
 - [Ручное тестирование](docs/MANUAL_TEST.md)
 - [Подключение и диагностика Telegram Desktop](docs/TELEGRAM.md)
