@@ -48,13 +48,122 @@ function Test-SupportComponentHashes {
     return $count -gt 0
 }
 
+function Test-SupportServiceConfiguration {
+    param([string]$ConfigPath = (Join-Path $root 'runtime\service.txt'))
+    # A running engine can keep using files moved since startup. Verify its
+    # saved references before stopping it, while recovery is still possible.
+    $config = $ConfigPath
+    if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { return $false }
+    try {
+        $content = Get-Content -LiteralPath $config -Raw -Encoding UTF8
+        if ([string]::IsNullOrWhiteSpace($content)) { return $false }
+        $base = Join-Path $root 'bin'
+        if ($content -match '(?m)^--chdir=(?:"([^"]+)"|([^\r\n]+))\r?$') {
+            $base = if ($matches[1]) { $matches[1] } else { $matches[2].Trim() }
+            if (-not [IO.Path]::IsPathRooted($base)) { $base = Join-Path $root $base }
+        }
+        if (-not (Test-Path -LiteralPath $base -PathType Container)) { return $false }
+        $references = @([regex]::Matches($content, '@(?:"([^"]+)"|([^\s\r\n]+))')) +
+            @([regex]::Matches($content, '(?m)^--(?:hostlist|hostlist-exclude|ipset|ipset-exclude)=(?:"([^"]+)"|([^\r\n]+))\r?$'))
+        if (-not $references.Count) { return $false }
+        foreach ($reference in $references) {
+            $path = if ($reference.Groups[1].Success) { $reference.Groups[1].Value } else { $reference.Groups[2].Value.Trim() }
+            if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $base $path }
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+        }
+        return $true
+    } catch { return $false }
+}
+
+function Get-SupportSoftwareLabel([object]$Finding) {
+    # Only fixed product names may appear in the shared report. Never copy
+    # service names, process IDs, command lines or paths from local evidence.
+    $text = [string]$Finding.Code + ' ' + [string]$Finding.Message
+    foreach ($product in @(
+        @('tailscale(?:d)?', 'Tailscale'), @('proxifier', 'Proxifier'),
+        @('goodbyedpi', 'GoodbyeDPI'), @('byedpi', 'ByeDPI'),
+        @('spoofdpi', 'SpoofDPI'), @('ciadpi', 'ciadpi'),
+        @('xray', 'Xray'), @('sing-box', 'sing-box'), @('nekoray', 'Nekoray'),
+        @('v2rayn', 'v2rayN'), @('clash[^\s.()]*', 'Clash'),
+        @('warp(?:-svc)?', 'WARP'), @('wireguard', 'WireGuard'),
+        @('openvpn', 'OpenVPN'), @('adguard', 'AdGuard')
+    )) {
+        if ($text -match ('(?i)(?<![a-z0-9])' + $product[0] + '(?![a-z0-9])')) { return $product[1] }
+    }
+    return ''
+}
+
+function ConvertTo-SupportFinding([object]$Finding) {
+    $code = ([string]$Finding.Code -split '-', 2)[0]
+    $descriptions = @{
+        Administrator=@('Права администратора', 'Откройте service.bat и подтвердите запрос Windows.')
+        BFE=@('Служба фильтрации Windows BFE', 'Запустите службу BFE и повторите проверку.')
+        File=@('Наличие компонентов сборки', 'Распакуйте полный ZIP релиза в отдельную папку.')
+        curl=@('Сетевой инструмент curl', 'Проверьте наличие curl в Windows.')
+        WinDivertDriver=@('Драйвер WinDivert', 'Если другая программа использует WinDivert, закройте её перед проверкой.')
+        ComponentHashes=@('Контрольные суммы компонентов', 'Распакуйте полный ZIP релиза в отдельную папку.')
+        IPSetEntries=@('Наличие IPSet', 'Обновите IPSet через service.bat.')
+        ForeignZapret=@('Обнаружена другая копия Zapret или ручной процесс', 'Остановите другую сборку или запустите диагностику из папки установленной службы.')
+        ServiceTransition=@('Служба Zapret переключается или приостановлена', 'Дождитесь завершения переключения службы и повторите проверку.')
+        ServiceConfiguration=@('Файлы сохранённого конфига службы', 'В service.bat выберите 1. Install Service и прежнюю стратегию: конфиг будет создан заново с актуальными путями.')
+        EngineEnumeration=@('Не удалось исключить ручной или старый движок Zapret', 'Проверьте состояние Zapret и права администратора.')
+        WinINETProxy=@('В Windows включён системный прокси', 'Отключите прокси в Windows: Параметры → Сеть и Интернет → Прокси, затем повторите проверку.')
+        WinINETAutoConfig=@('В Windows настроен сценарий автоматического прокси', 'Отключите сценарий в Windows: Параметры → Сеть и Интернет → Прокси, затем повторите проверку.')
+        WinHTTPProxy=@('Настройка прокси WinHTTP', 'Проверьте и отключите прокси WinHTTP на время диагностики.')
+        ProxyEnvironment=@('Настройки прокси в переменных окружения', 'На время проверки отключите HTTP_PROXY, HTTPS_PROXY и ALL_PROXY и заново откройте service.bat.')
+        DefaultRoutes=@('Проверка маршрутов подключения', 'Проверьте, использует ли подключение VPN.')
+        Adapter=@('Сетевой адаптер VPN или overlay', 'Если VPN направляет интернет-трафик через себя, отключите его на время проверки.')
+        Adapters=@('Проверка сетевых адаптеров', 'Проверьте активные VPN-подключения.')
+        SoftwareProcess=@('Обнаружена возможная конфликтующая программа', 'Проверьте, обрабатывает ли она интернет-трафик; если да, отключите её на время проверки.')
+        SoftwareService=@('Обнаружена возможная конфликтующая служба', 'Проверьте, обрабатывает ли она интернет-трафик; если да, отключите её на время проверки.')
+        SoftwareProcesses=@('Проверка конфликтующих программ', 'Проверьте активные программы VPN, прокси и обхода блокировок.')
+        ZapretService=@('Состояние службы Zapret', '')
+        ZapretProcess=@('Ручной процесс Zapret', 'Закройте ручной запуск Zapret перед проверкой.')
+        Environment=@('Проверка окружения', 'Устраните препятствие и повторите проверку.')
+    }
+    if (-not $descriptions.ContainsKey($code)) { $code = 'Environment' }
+    $severity = if ($Finding.Severity -in @('Pass','Info','Warning','Blocker')) { $Finding.Severity } else { 'Warning' }
+    $message = $descriptions[$code][0]
+    if ($code -in @('SoftwareProcess','SoftwareService')) {
+        $product = Get-SupportSoftwareLabel $Finding
+        if ($product) { $message += ': ' + $product }
+    }
+    if ($code -eq 'Adapter' -and $severity -eq 'Blocker') { $message = 'VPN или overlay использует маршрут по умолчанию' }
+    if ($severity -eq 'Pass') {
+        # A successful check must not claim that a proxy or conflict is present.
+        $message = switch ($code) {
+            'WinINETProxy' { 'Системный прокси Windows выключен' }
+            'WinHTTPProxy' { 'WinHTTP настроен на прямое подключение' }
+            'ProxyEnvironment' { 'Переменные прокси не обнаружены' }
+            'WinDivertDriver' { 'Другой запущенный драйвер WinDivert не обнаружен' }
+            'Adapter' { 'Основной сетевой адаптер' }
+            default { $message }
+        }
+    }
+    return [pscustomobject]@{
+        code=$code; severity=$severity; message=$message
+        action=if ($severity -in @('Blocker','Warning')) { $descriptions[$code][1] } else { '' }
+    }
+}
+
+function Show-SupportFindings([array]$Findings) {
+    $attention = @($Findings | Where-Object { $_.Severity -in @('Blocker','Warning') } |
+        ForEach-Object { ConvertTo-SupportFinding $_ } | Sort-Object severity,message -Unique)
+    foreach ($check in $attention) {
+        $label = if ($check.severity -eq 'Blocker') { 'Нужно исправить' } else { 'Обратите внимание' }
+        Write-Host "[$label] $($check.message)" -ForegroundColor Yellow
+        if ($check.action) { Write-Host "  $($check.action)" }
+    }
+}
+
 function Get-SupportEnvironment {
     $snapshot = Get-PreflightSnapshot -SkipVoiceChecks
-    $findings = @($snapshot.Findings)
-    # There are no interactive VPN decisions in automatic mode. Active default
-    # VPN routes or known filtering programs make the scan inconclusive.
+    $findings = @($snapshot.Findings | ForEach-Object { $_.PSObject.Copy() })
+    # Presence alone does not prove active filtering: Tailscale without an
+    # exit-node/default route and an idle proxy UI must remain warnings.
     foreach ($finding in $findings) {
-        if ($finding.Category -eq 'ConflictingSoftware' -or
+        if (($finding.Category -eq 'ConflictingSoftware' -and
+                (Get-SupportSoftwareLabel $finding) -in @('GoodbyeDPI','ByeDPI','SpoofDPI','ciadpi')) -or
             ($finding.Code -like 'Adapter-*' -and $finding.Message -match '(Overlay|VpnCandidate).*default-route=True')) {
             $finding.Severity = 'Blocker'
         }
@@ -72,6 +181,10 @@ function Get-SupportEnvironment {
     }
     $expectedImage = '"' + (Join-Path $root 'bin\winws2.exe') + '" @"' + (Join-Path $root 'runtime\service.txt') + '"'
     $foreignService = $null -ne $service -and $service.PathName -ne $expectedImage
+    if ($service -and -not $foreignService) {
+        $serviceConfigOk = Test-SupportServiceConfiguration
+        $findings += New-PreflightFinding 'ServiceConfiguration' $(if ($serviceConfigOk) { 'Pass' } else { 'Blocker' }) 'ZapretState' 'Saved service configuration references check'
+    }
     $otherServices = @($snapshot.ConflictState.Services | Where-Object { $_.Name -ne 'winws2' -and $_.WasRunning })
     if ($foreignService -or $otherServices.Count -or @($snapshot.ConflictState.ManualProcesses).Count) {
         $findings += New-PreflightFinding 'ForeignZapret' 'Blocker' 'ZapretState' 'Another Zapret instance is present'
@@ -147,16 +260,7 @@ function New-SupportPublicDocument {
         $value = [string]$script:support.settings[$key]
         $settings[$key] = if ($value -in @('off','tcp','udp','all','loaded','none','any','standard','compatible','current','steam','google','dbank-v2')) { $value } else { 'unknown' }
     }
-    $checks = @($script:support.findings | ForEach-Object {
-        $code = ([string]$_.Code -split '-', 2)[0]
-        if ($code -notin @('Administrator','BFE','File','curl','WinDivertDriver','WinINETProxy','WinINETAutoConfig',
-            'WinHTTPProxy','ProxyEnvironment','DefaultRoutes','Adapter','Adapters','SoftwareProcess','SoftwareService',
-            'SoftwareProcesses','ZapretService','ZapretProcess','ComponentHashes','IPSetEntries','ForeignZapret','ServiceTransition','EngineEnumeration')) { $code = 'Environment' }
-        [pscustomobject]@{
-            code = $code
-            severity = if ($_.Severity -in @('Pass','Info','Warning','Blocker')) { $_.Severity } else { 'Warning' }
-        }
-    })
+    $checks = @($script:support.findings | ForEach-Object { ConvertTo-SupportFinding $_ })
     $rows = @($script:result.webResults | ForEach-Object {
         $row = $_
         $target = @($script:targets | Where-Object { $_.Name -eq $row.Target } | Select-Object -First 1)
@@ -174,7 +278,7 @@ function New-SupportPublicDocument {
     })
     $issues = @($script:support.issues | Where-Object {
         $_ -in @('EnvironmentReadFailed','OperationBusy','EngineStartFailed','ScanFailed','Canceled',
-            'EngineCleanupFailed','ServiceRestoreFailed','StateChanged','StateReadFailed')
+            'EngineCleanupFailed','ServiceRestoreFailed','StateChanged','StateReadFailed','EnvironmentBlocked','DNSResolutionFailed')
     } | Select-Object -Unique)
     return [ordered]@{
         schema = 'zapret2-next.support-report'; schemaVersion = 1
@@ -206,17 +310,10 @@ function Save-SupportArtifacts([string]$RunDirectory) {
         "Настройки сохранены: $($document.statePreserved); состояние службы восстановлено: $($document.serviceRestored)",
         '', 'Проверки окружения (подробности — в results.json):'
     )
-    $explanations = @{
-        Administrator='Права администратора'; BFE='Служба фильтрации Windows'; File='Компоненты сборки'; curl='Сетевой инструмент curl'
-        WinDivertDriver='Драйвер WinDivert'; ComponentHashes='Контрольные суммы компонентов'; IPSetEntries='Наличие IPSet'
-        ForeignZapret='Другая копия Zapret или ручной процесс'; ServiceTransition='Служба ещё переключается или приостановлена'
-        EngineEnumeration='Не удалось исключить ручной или старый движок Zapret'
-        WinINETProxy='Системный прокси'; WinINETAutoConfig='Автоматическая настройка прокси'; WinHTTPProxy='Прокси WinHTTP'
-        ProxyEnvironment='Прокси в переменных окружения'; Adapter='Активный сетевой адаптер'; Adapters='Проверка адаптеров'
-        DefaultRoutes='Маршруты подключения'; SoftwareProcess='Возможная конфликтующая программа'; SoftwareService='Возможная конфликтующая служба'
-        SoftwareProcesses='Проверка программ'; ZapretService='Служба Zapret'; ZapretProcess='Ручной процесс Zapret'; Environment='Проверка окружения'
+    foreach ($check in $document.checks) {
+        $lines += "[$($check.severity)] $($check.message)"
+        if ($check.action) { $lines += '  ' + $check.action }
     }
-    foreach ($check in $document.checks) { $lines += "[$($check.severity)] $($explanations[$check.code])" }
     $lines += @('', 'Доступность проверенных адресов:')
     foreach ($preset in @(@('') + $publicPresets)) {
         foreach ($mode in @('none','loaded','any')) {
@@ -227,11 +324,18 @@ function Save-SupportArtifacts([string]$RunDirectory) {
             }
         }
     }
-    $lines += @('', "Коды проблем: $($document.issues -join ', ')",
-        'Проверена DNS/TLS/HTTP-доступность адресов. Ответ HTTP сам по себе не подтверждает обход блокировки.',
+    $networkSummary = if ($document.webResults.Count) {
+        'Проверена DNS/TLS/HTTP-доступность указанных адресов. Ответ HTTP сам по себе не подтверждает обход блокировки.'
+    } else { 'Сетевые проверки не выполнялись; доступность адресов и работа стратегий не проверены.' }
+    $lines += @('', "Коды проблем: $($document.issues -join ', ')", $networkSummary,
         'Звонки, демонстрация экрана и воспроизведение видео автоматически не проверялись.',
         'IPSet=any используется только для диагностики; настройки не применяются.',
         'Приложите этот ZIP к обращению на GitHub. Отправка выполняется вручную.')
+    if ($document.issues -contains 'DNSResolutionFailed') {
+        $lines += @('', 'В части запросов не удалось определить адрес сайта (ошибка DNS, curl=6).',
+            'Это не подтверждает, что сайт не работает в браузере: его DNS, прокси и сохранённые соединения могут отличаться.',
+            'Цели с такой ошибкой указаны в web-results.csv; подробности curl сохранены только в local/results-local.json.')
+    }
     Write-Utf8File (Join-Path $share 'REPORT.txt') (($lines -join "`r`n") + "`r`n")
     $files = @('REPORT.txt','results.json','web-results.csv') | ForEach-Object { Join-Path $share $_ }
     # Never archive a runtime directory recursively: local logs can contain secrets.
@@ -264,7 +368,7 @@ function Invoke-SupportDiagnostics {
         Write-Host 'Проверка всех стратегий может занять несколько минут. Показан прогресс; Ctrl+C — отмена.'
         if (-not (Read-YesNo 'Начать автоматическую проверку?' 'No')) { throw [OperationCanceledException]::new() }
         try { $lock = [IO.File]::Open((Join-Path $root 'runtime\engine-operation.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
-        catch { Add-SupportIssue 'OperationBusy'; $script:support.status='blocked'; break }
+        catch { Add-SupportIssue 'OperationBusy'; $script:support.status='blocked'; $exitCode=3; break }
         $stateBefore = Get-SupportStateHashes
         $script:support.settings = Read-SupportSettings
         try {
@@ -275,11 +379,14 @@ function Invoke-SupportDiagnostics {
             $script:support.ipsetEntries = $environment.IPSetEntries
             $environment.PrivateSnapshot | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $script:resultDir 'preflight-local.json') -Encoding UTF8
         } catch {
-            Add-SupportIssue 'EnvironmentReadFailed'; $script:support.status='blocked'
+            Add-SupportIssue 'EnvironmentReadFailed'; $script:support.status='blocked'; $exitCode=3
             $_ | Out-String | Set-Content -LiteralPath (Join-Path $script:resultDir 'errors-local.txt') -Encoding UTF8
             break
         }
-        if ($environment.Blocked) { $script:support.status='blocked'; break }
+        Show-SupportFindings $environment.Findings
+        if ($environment.Blocked) {
+            Add-SupportIssue 'EnvironmentBlocked'; $script:support.status='blocked'; $exitCode=3; break
+        }
         if ($environment.Service -and $environment.Service.WasRunning) {
             $serviceStopped=$true; $script:support.serviceRestored=$false
             Stop-SupportService
@@ -315,6 +422,7 @@ function Invoke-SupportDiagnostics {
             try { Restore-SupportService; $script:support.serviceRestored=$true }
             catch {
                 Add-SupportIssue 'ServiceRestoreFailed'; $script:support.status='failed'; $exitCode=1
+                try { $_ | Out-String | Set-Content -LiteralPath (Join-Path $script:resultDir 'service-restore-local.txt') -Encoding UTF8 } catch {}
                 Write-Host 'Не удалось запустить прежнюю службу. Откройте service.bat и установите прежнюю стратегию.' -ForegroundColor Red
             }
         }
@@ -330,9 +438,13 @@ function Invoke-SupportDiagnostics {
         if ($lock) { $lock.Dispose() }
         $script:support.finishedAtUtc=[DateTime]::UtcNow.ToString('o')
         Write-Progress -Activity 'Автоматическая диагностика' -Completed
+        if (@($script:result.webResults | Where-Object CurlExitCode -eq 6).Count) { Add-SupportIssue 'DNSResolutionFailed' }
+        try {
+            Write-Utf8File (Join-Path $script:resultDir 'results-local.json') (($script:result | ConvertTo-Json -Depth 10) + "`r`n")
+        } catch { Write-Host 'Подробности локальных проверок не удалось сохранить; подготовка ZIP продолжается.' -ForegroundColor Yellow }
         # The finally block also publishes blocked and canceled partial reports.
         $zip = Save-SupportArtifacts $run
-        $script:supportArtifact = [pscustomobject]@{ ZipPath=$zip; Directory=$run; ExitCode=$exitCode; Status=$script:support.status }
+        $script:supportArtifact = [pscustomobject]@{ ZipPath=$zip; Directory=$run; ExitCode=$exitCode; Status=$script:support.status; Issues=@($script:support.issues) }
     }
     return $script:supportArtifact
 }

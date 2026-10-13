@@ -21,7 +21,10 @@ try {
     }
     $artifact = Invoke-SupportDiagnostics -Provider $Provider -RegionCity $RegionCity
     if ($artifact.Status -eq 'blocked') {
-        Write-Host 'Проверку остановило препятствие в окружении. Его результат записан в отчёт.' -ForegroundColor Yellow
+        Write-Host 'Стратегии пока не проверялись. Устраните указанные причины и повторите проверку; результат также записан в отчёт.' -ForegroundColor Yellow
+    }
+    if ($artifact.Issues -contains 'DNSResolutionFailed') {
+        Write-Host 'Часть адресов не удалось определить через DNS. Это не подтверждает, что сайт не работает в браузере; подробности есть в отчёте.' -ForegroundColor Yellow
     }
     Write-Host "ZIP для обращения: $($artifact.ZipPath)" -ForegroundColor Cyan
     Write-Host 'Приложите этот ZIP к GitHub Issue. Он не отправляется автоматически.'
