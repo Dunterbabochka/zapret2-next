@@ -201,8 +201,9 @@ function Expand-ReleasePackage([string]$Archive, [string]$Destination, [string]$
             if ($total -gt 1GB -or $zip.Entries.Count -gt 10000) { throw 'Release ZIP exceeds extraction limits.' }
         }
         foreach ($entry in $zip.Entries) {
-            $path = Join-Path $Destination $entry.FullName.Replace('/','\')
-            if ($entry.FullName.EndsWith('/')) { New-Item -ItemType Directory -Path $path -Force | Out-Null; continue }
+            $relative = $entry.FullName.Replace('\','/')
+            $path = Join-Path $Destination $relative.Replace('/','\')
+            if ($relative.EndsWith('/')) { New-Item -ItemType Directory -Path $path -Force | Out-Null; continue }
             New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
             [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $path, $false)
         }

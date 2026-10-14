@@ -14,13 +14,34 @@ function Get-ZapretTelegramShellProcessId {
     if (-not ('ZapretTelegram.NativeShell' -as [type])) {
         Add-Type -TypeDefinition @'
 using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 namespace ZapretTelegram {
     public static class NativeShell {
         [DllImport("user32.dll")]
         public static extern IntPtr GetShellWindow();
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+        [DllImport("kernel32.dll")]
+        private static extern bool CloseHandle(IntPtr handle);
+        public static string GetOwnerSid(uint processId) {
+            IntPtr process = OpenProcess(0x1000, false, processId); // QUERY_LIMITED_INFORMATION
+            if (process == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            IntPtr token = IntPtr.Zero;
+            try {
+                if (!OpenProcessToken(process, 8, out token)) // TOKEN_QUERY
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                using (WindowsIdentity identity = new WindowsIdentity(token)) return identity.User.Value;
+            } finally {
+                if (token != IntPtr.Zero) CloseHandle(token);
+                CloseHandle(process);
+            }
+        }
     }
 }
 '@ -ErrorAction Stop
@@ -49,9 +70,9 @@ function Get-ZapretTelegramIdentity {
 }
 
 function Get-ZapretTelegramContext {
-    param([Parameter(Mandatory)][string]$Root)
+    param([Parameter(Mandatory)][string]$Root, [switch]$Fast)
     $bundle = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-    $sid = Get-ZapretTelegramIdentity
+    $sid = if ($Fast) { Get-ZapretTelegramFastIdentity } else { Get-ZapretTelegramIdentity }
     $runtime = Join-Path (Join-Path $bundle 'runtime\telegram') $sid
     return [pscustomobject]@{
         Root = $bundle
@@ -62,6 +83,78 @@ function Get-ZapretTelegramContext {
         Runtime = $runtime
         Config = Join-Path $runtime 'config.json'
         Log = Join-Path $runtime 'proxy.log'
+    }
+}
+
+function Get-ZapretTelegramNativeIdentity([int]$ProcessId) {
+    $process = [Diagnostics.Process]::GetProcessById($ProcessId)
+    try {
+        [pscustomobject]@{SessionId=$process.SessionId;SID=[ZapretTelegram.NativeShell]::GetOwnerSid([uint32]$ProcessId)}
+    } finally { $process.Dispose() }
+}
+
+function Get-ZapretTelegramFastIdentity {
+    $shellProcessId = Get-ZapretTelegramShellProcessId
+    if (-not $shellProcessId) { return Get-ZapretTelegramCurrentIdentity }
+    $owner = Get-ZapretTelegramNativeIdentity $shellProcessId
+    if ($owner.SessionId -ne (Get-ZapretTelegramSessionId) -or [string]$owner.SID -notmatch '^S-1-\d+(?:-\d+)+$') {
+        throw 'Cannot identify the desktop user in this Windows session.'
+    }
+    return (New-Object Security.Principal.SecurityIdentifier([string]$owner.SID)).Value
+}
+
+function New-ZapretTelegramStatusScheduler {
+    New-Object -ComObject 'Schedule.Service'
+}
+
+function Get-ZapretTelegramStatusTask {
+    param($Context)
+    # Direct lookup avoids importing the CIM provider and enumerating all tasks.
+    # Project to the same ownership fields used by the full status check.
+    $scheduler=$null; $folder=$null; $task=$null; $definition=$null; $principal=$null; $collection=$null
+    try {
+        $scheduler=New-ZapretTelegramStatusScheduler
+        $scheduler.Connect()
+        $folder=$scheduler.GetFolder('\')
+        try { $task=$folder.GetTask($Context.TaskName) }
+        catch {
+            $cause=$_.Exception
+            while ($cause.InnerException) { $cause=$cause.InnerException }
+            if ($cause.HResult -eq -2147024894) { return $null } # ERROR_FILE_NOT_FOUND only
+            throw
+        }
+        $definition=$task.Definition
+        $principal=$definition.Principal
+        $collection=$definition.Actions
+        $actions=@(foreach ($action in $collection) {
+            try {
+                if ([int]$action.Type -eq 0) { [pscustomobject]@{Execute=[string]$action.Path;Arguments=[string]$action.Arguments} }
+                else { [pscustomobject]@{Execute='';Arguments=''} }
+            } finally { if ([Runtime.InteropServices.Marshal]::IsComObject($action)) { $null=[Runtime.InteropServices.Marshal]::ReleaseComObject($action) } }
+        })
+        $states=@('Unknown','Disabled','Queued','Ready','Running')
+        $state=if ([int]$task.State -in 0..4) {$states[[int]$task.State]} else {'Unknown'}
+        [pscustomobject]@{TaskName=$Context.TaskName;State=$state;Actions=$actions;Principal=[pscustomobject]@{
+            UserId=[string]$principal.UserId
+            LogonType=$(if ([int]$principal.LogonType -eq 3) {'Interactive'} else {'Other'})
+            RunLevel=$(if ([int]$principal.RunLevel -eq 0) {'Limited'} else {'Highest'})
+        }}
+    } finally {
+        foreach ($com in @($collection,$principal,$definition,$task,$folder,$scheduler)) {
+            if ($null -ne $com -and [Runtime.InteropServices.Marshal]::IsComObject($com)) { $null=[Runtime.InteropServices.Marshal]::ReleaseComObject($com) }
+        }
+    }
+}
+
+function Get-ZapretTelegramListenerEndpoints {
+    [Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+}
+
+function Get-ZapretTelegramStatusListeners([int]$Port) {
+    # No listener means no process ownership query is needed. If one exists,
+    # retain the full PID/address/config validation; never infer ownership here.
+    if (@(Get-ZapretTelegramListenerEndpoints | Where-Object Port -eq $Port).Count) {
+        Get-ZapretTelegramListeners $Port
     }
 }
 
@@ -467,15 +560,15 @@ function Restart-ZapretTelegram {
 }
 
 function Get-ZapretTelegramStatus {
-    param([Parameter(Mandatory)][string]$Root, [switch]$Compact)
-    $context = Get-ZapretTelegramContext $Root
+    param([Parameter(Mandatory)][string]$Root, [switch]$Compact, [switch]$Fast)
+    $context = Get-ZapretTelegramContext $Root -Fast:$Fast
     $state = 'ERROR'
     $taskState = 'Unavailable'
     $listener = 'Not checked'
     $endpoint = '-'
     $detail = ''
     try {
-        $task = Get-ZapretTelegramTask $context
+        $task = if ($Fast) { Get-ZapretTelegramStatusTask $context } else { Get-ZapretTelegramTask $context }
         if ($task -and -not (Test-ZapretTelegramTaskOwner $context $task)) {
             $state = 'OTHER_FOLDER'; $taskState = 'Owned by another bundle'
         } else {
@@ -485,7 +578,7 @@ function Get-ZapretTelegramStatus {
             $listener = 'Not listening'
             if ($config) {
                 $endpoint = '127.0.0.1:' + $config.port
-                $listeners = @(Get-ZapretTelegramListeners $config.port)
+                $listeners = @(if ($Fast) { Get-ZapretTelegramStatusListeners $config.port } else { Get-ZapretTelegramListeners $config.port })
                 if ($listeners.Count) {
                     $processes = @(Get-ZapretTelegramProcesses)
                     $foreign = @($listeners | Where-Object { -not (Test-ZapretTelegramListenerOwner $context $_ $processes) })

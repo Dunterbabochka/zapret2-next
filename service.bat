@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 set "SERVICE_NAME=winws2"
-set "TELEGRAM_STATUS="
+set "TELEGRAM_STATUS=unavailable"
 set "ROOT=%~dp0"
 if /I "%~1"=="log_session" set "ZAPRET_LOG_SESSION=%~2"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
@@ -22,14 +22,23 @@ if /I "%~1"=="check_updates" (
   exit /b
 )
 
+echo Starting Zapret 2 NEXT...
+fltmc >nul 2>&1
+set "NEEDS_ADMIN=!errorlevel!"
+set "LOG_BOOTSTRAP_OPTIONS="
+if not "!NEEDS_ADMIN!"=="0" set "LOG_BOOTSTRAP_OPTIONS=-SkipTelegramStatus"
+if exist "%ROOT%\runtime\release-update\recovery-needed" set "LOG_BOOTSTRAP_OPTIONS=-SkipTelegramStatus"
+if exist "%ROOT%\runtime\release-update\cleanup-pending" set "LOG_BOOTSTRAP_OPTIONS=-SkipTelegramStatus"
 set "ZAPRET_LOG_ROOT=%ROOT%"
 set "LOG_SESSION_RESULT=disabled"
-for /f "delims=" %%L in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-logs.ps1" -Action Start -SessionId "%ZAPRET_LOG_SESSION%"') do set "LOG_SESSION_RESULT=%%L"
+for /f "tokens=1,* delims==" %%K in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-logs.ps1" -Action Start -SessionId "%ZAPRET_LOG_SESSION%" -MenuBootstrap !LOG_BOOTSTRAP_OPTIONS!') do (
+  if "%%K"=="SESSION" set "LOG_SESSION_RESULT=%%L"
+  if "%%K"=="TELEGRAM" set "TELEGRAM_STATUS=%%L"
+)
 set "ZAPRET_LOG_SESSION=%LOG_SESSION_RESULT%"
 if "%ZAPRET_LOG_SESSION%"=="disabled" set "ZAPRET_LOG_DISABLED=1"
 
-fltmc >nul 2>&1
-if errorlevel 1 (
+if not "!NEEDS_ADMIN!"=="0" (
   echo Requesting administrator rights...
   powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c ""%~f0"" log_session %ZAPRET_LOG_SESSION%' -Verb RunAs"
   set "ELEVATION_EXIT=!errorlevel!"
@@ -40,11 +49,13 @@ if errorlevel 1 (
 mode con: cols=110 lines=40 >nul 2>&1
 if exist "%ROOT%\runtime\release-update\recovery-needed" (
   call :recover_update
-  if errorlevel 1 exit /b 1
+  if errorlevel 1 goto recovery_failed
+  set "TELEGRAM_STATUS="
 )
 if exist "%ROOT%\runtime\release-update\cleanup-pending" (
   call :recover_update
-  if errorlevel 1 exit /b 1
+  if errorlevel 1 goto recovery_failed
+  set "TELEGRAM_STATUS="
 )
 if exist "%ROOT%\.service\version.txt" set /p VERSION=<"%ROOT%\.service\version.txt"
 
@@ -494,6 +505,10 @@ if not exist "%ROOT%\runtime\release-update\recovery\update-release.ps1" (
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\runtime\release-update\recovery\update-release.ps1" -Action Recover -Root "%ROOT%"
 exit /b %errorlevel%
+
+:recovery_failed
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-logs.ps1" -Action Finish -ExitCode 1
+exit /b 1
 
 :diagnostics
 cls

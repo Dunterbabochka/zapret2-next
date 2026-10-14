@@ -6,7 +6,9 @@ param(
     [int]$Selection=255,
     [int]$ExitCode=0,
     [switch]$Handoff,
-    [switch]$NoReveal
+    [switch]$NoReveal,
+    [switch]$MenuBootstrap,
+    [switch]$SkipTelegramStatus
 )
 $ErrorActionPreference='Stop'
 if (-not $Root) { $Root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')) }
@@ -33,7 +35,18 @@ if ($Action -eq 'Start') {
         }
         Write-ZapretLogEvent -Action Status -Stage snapshot -Code StateObserved -Details @{autoCheck=[IO.File]::Exists((Join-Path $Root 'utils\check_updates.enabled'))}
     } catch { Write-ZapretLogException $_ -Warning }
-    if ($script:ZapretLog -and $env:ZAPRET_LOG_DISABLED -ne '1') { Write-Output $script:ZapretLog.Id } else { Write-Output 'disabled' }
+    $id=if ($script:ZapretLog -and $env:ZAPRET_LOG_DISABLED -ne '1') {$script:ZapretLog.Id} else {'disabled'}
+    if ($MenuBootstrap) {
+        Write-Output ('SESSION='+$id)
+        if (-not $SkipTelegramStatus) {
+            $status='ERROR'
+            try {
+                . (Join-Path $PSScriptRoot 'telegram-control.ps1')
+                $status=Get-ZapretTelegramStatus $Root -Compact -Fast
+            } catch { Write-ZapretLogException $_ -Warning }
+            Write-Output ('TELEGRAM='+$status)
+        }
+    } else { Write-Output $id }
     exit 0
 }
 try {

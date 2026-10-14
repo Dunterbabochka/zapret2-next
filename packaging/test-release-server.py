@@ -79,7 +79,12 @@ def main():
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = True
-    (root / "port.txt").write_text(str(server.server_port), encoding="ascii")
+    # Publish only after closing the writer: Windows readers can otherwise see
+    # a new port.txt while it is still locked (or before its contents are ready).
+    port_file = root / "port.txt"
+    temporary_port = root / "port.txt.tmp"
+    temporary_port.write_text(str(server.server_port), encoding="ascii")
+    temporary_port.replace(port_file)
     server.serve_forever()
 
 

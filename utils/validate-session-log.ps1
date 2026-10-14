@@ -45,6 +45,15 @@ try {
     $cli=Join-Path $cliRoot 'utils\manage-logs.ps1'
     $cliId=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli -Action Start
     Assert-Log ($LASTEXITCODE -eq 0 -and $cliId -match '^[a-f0-9]{32}$') 'CLI Start default Root failed on Windows PowerShell'
+    $bootstrap=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli -Action Start -SessionId $cliId -MenuBootstrap -SkipTelegramStatus
+    Assert-Log ($LASTEXITCODE -eq 0 -and @($bootstrap).Count -eq 1 -and $bootstrap -ceq ('SESSION='+$cliId)) 'Unelevated menu bootstrap queried Telegram or lost its session'
+    $telegramStub=Join-Path $cliRoot 'utils\telegram-control.ps1'
+    [IO.File]::WriteAllText($telegramStub,"function Get-ZapretTelegramStatus { param(`$Root,[switch]`$Compact,[switch]`$Fast); if (-not `$Fast) { throw 'Full status used during bootstrap' }; 'DISABLED' }",[Text.UTF8Encoding]::new($true))
+    $bootstrap=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli -Action Start -SessionId $cliId -MenuBootstrap
+    Assert-Log ($LASTEXITCODE -eq 0 -and @($bootstrap).Count -eq 2 -and $bootstrap[0] -ceq ('SESSION='+$cliId) -and $bootstrap[1] -ceq 'TELEGRAM=DISABLED') 'Combined menu bootstrap output or fast status contract failed'
+    [IO.File]::WriteAllText($telegramStub,"function Get-ZapretTelegramStatus { throw 'Injected status failure' }",[Text.UTF8Encoding]::new($true))
+    $bootstrap=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli -Action Start -SessionId $cliId -MenuBootstrap
+    Assert-Log ($LASTEXITCODE -eq 0 -and @($bootstrap).Count -eq 2 -and $bootstrap[1] -ceq 'TELEGRAM=ERROR') 'Telegram status failure blocked the menu bootstrap'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli -Action Finish -SessionId $cliId
     Assert-Log ($LASTEXITCODE -eq 0) 'CLI Finish failed'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli -Action Export -NoReveal

@@ -121,6 +121,19 @@ try {
     Write-FixtureText (Join-Path $package '.service\version.txt') '9.9.1'
     Write-FixtureText (Join-Path $package 'lists\new-required.txt') 'new bundled list'
     [IO.Compression.ZipFile]::CreateFromDirectory($package,(Join-Path $fixture 'valid.zip'),[IO.Compression.CompressionLevel]::Fastest,$true)
+    # Windows PowerShell Compress-Archive emits backslashes, including trailing
+    # directory separators. Such entries must never become zero-byte files.
+    $windowsZip=Join-Path $fixture 'windows-separators.zip'
+    $archive=[IO.Compression.ZipFile]::Open($windowsZip,[IO.Compression.ZipArchiveMode]::Create)
+    try {
+        $null=$archive.CreateEntry('zapret2-next-v9.9.1\docs\third_party\')
+        $entry=$archive.CreateEntry('zapret2-next-v9.9.1\docs\third_party\nested\LICENSE')
+        $writer=[IO.StreamWriter]::new($entry.Open())
+        try {$writer.Write('Windows ZIP directory fixture')} finally {$writer.Dispose()}
+    } finally {$archive.Dispose()}
+    $windowsStage=Expand-ReleasePackage $windowsZip (Join-Path $fixture 'windows-unpacked') '9.9.1'
+    Assert-Update ([IO.Directory]::Exists((Join-Path $windowsStage 'docs\third_party'))) 'Windows ZIP directory was extracted as a file'
+    Assert-Update ([IO.File]::ReadAllText((Join-Path $windowsStage 'docs\third_party\nested\LICENSE')) -ceq 'Windows ZIP directory fixture') 'Windows ZIP nested content was not extracted'
     Write-FixtureText (Join-Path $fixture 'invalid.zip') 'not a ZIP'
     Set-ServerScenario
     $server = Start-Process python -ArgumentList ('"'+(Join-Path $sourceRoot 'packaging\test-release-server.py')+'" --root "'+$fixture+'"') -WindowStyle Hidden -PassThru

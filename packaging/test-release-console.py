@@ -80,9 +80,10 @@ class Console:
         return buffer[:read.value]
 
     def wait_text(self, expected, timeout=10):
+        alternatives = (expected,) if isinstance(expected, str) else expected
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if expected in self.text():
+            if any(value in self.text() for value in alternatives):
                 return
             if self.process.poll() is not None:
                 break
@@ -121,9 +122,8 @@ def main():
     shutil.copytree(args.source / ".service", fixture / ".service")
     (fixture / ".service" / "version.txt").write_text("9.9.0", encoding="ascii")
     service = (args.source / "service.bat").read_text(encoding="utf-8-sig")
-    start = service.index("\nfltmc ")
-    end = service.index("\nmode con:", start)
-    service = service[:start] + service[end:]
+    service = service.replace("fltmc >nul 2>&1", "cmd /d /c exit 0", 1)
+    service = service.replace("-MenuBootstrap !LOG_BOOTSTRAP_OPTIONS!", "-MenuBootstrap -SkipTelegramStatus", 1)
     service = re.sub(r"(?ms)^:read_status\n.*?(?=^:read_settings\n)",
                      ":read_status\nset \"CURRENT_PRESET=general\"\nset \"SERVICE_STATUS=Stopped\"\nset \"TELEGRAM_STATUS=DISABLED\"\ncall :read_settings\nexit /b\n\n", service)
     labels = {"install_service": 1, "remove_service": 2, "show_status": 3, "game_filter": 4,
@@ -156,6 +156,7 @@ function Get-ReleaseHttpTarget([string]$Url) {
     console = Console(command)
     try:
         started = time.monotonic()
+        console.wait_text(("Starting Zapret 2 NEXT...", "ZAPRET 2 NEXT SERVICE MANAGER"), timeout=2)
         console.wait_text("Select option (0-15):", timeout=8)
         assert time.monotonic() - started < 8, "Menu waited for the 10-second API response"
         console.type("0\r")
@@ -227,6 +228,32 @@ function Get-ReleaseHttpTarget([string]$Url) {
         console.close()
     assert (args.root / "requests.txt").read_text(encoding="utf-8") == requests, "Logs-only export performed network diagnostics"
     print("[OK] Diagnostics -> 5 creates a logs archive through the real cmd.exe submenu")
+    recovery = fixture / "runtime/release-update/recovery"
+    recovery.mkdir(parents=True, exist_ok=True)
+    worker = recovery / "update-release.ps1"
+    for marker_name, recovery_exit in (("recovery-needed", 0), ("cleanup-pending", 0), ("recovery-needed", 1)):
+        marker = recovery.parent / marker_name
+        marker.write_text("test", encoding="ascii")
+        ran = fixture / "recovery-ran"
+        ran.unlink(missing_ok=True)
+        worker.write_text(
+            "param([string]$Action,[string]$Root)\n"
+            "[IO.File]::WriteAllText((Join-Path $Root 'recovery-ran'),'yes')\n"
+            + (f"[IO.File]::Delete((Join-Path $Root 'runtime/release-update/{marker_name}'))\n" if recovery_exit == 0 else "")
+            + f"exit {recovery_exit}\n", encoding="utf-8-sig")
+        console = Console(command)
+        try:
+            if recovery_exit == 0:
+                console.wait_text("Select option (0-15):")
+                console.type("0\r")
+            assert console.process.wait(timeout=10) == recovery_exit
+            assert ran.exists(), "Menu skipped required recovery"
+            if recovery_exit:
+                assert "Select option (0-15):" not in console.text(), "Menu opened after failed recovery"
+        finally:
+            console.close()
+            marker.unlink(missing_ok=True)
+    print("[OK] early recovery, deferred cleanup and failure blocking survive menu bootstrap")
     helper = fixture / "read-choice.bat"
     helper.write_text(f'@echo off\npowershell -NoProfile -ExecutionPolicy Bypass -File "{script_path}" -Action ReadMenuChoice\nexit /b %errorlevel%\n', encoding="ascii")
     for choice in ("0", "10", "111", "999"):

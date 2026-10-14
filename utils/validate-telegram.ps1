@@ -1,4 +1,4 @@
-# Offline lifecycle checks. All scheduler, CIM, socket and launch operations are
+﻿# Offline lifecycle checks. All scheduler, CIM, socket and launch operations are
 # mocked before any Telegram action; no real task, process or Telegram is changed.
 $ErrorActionPreference = 'Stop'
 $bundleRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -27,6 +27,31 @@ function Get-ZapretTelegramIdentity {
 function Get-ZapretTelegramCurrentIdentity { return $script:processSID }
 function Get-ZapretTelegramShellProcessId { return $script:shellProcessId }
 function Get-ZapretTelegramSessionId { return 7 }
+function Get-ZapretTelegramNativeIdentity {
+    param([int]$ProcessId)
+    if ($script:shellOwnerResult) { throw [UnauthorizedAccessException]::new('Injected token access failure') }
+    [pscustomobject]@{SessionId=$script:shellProcess.SessionId;SID=$script:shellOwnerSID}
+}
+function Get-ZapretTelegramListenerEndpoints {
+    $script:fakeListeners | ForEach-Object { [pscustomobject]@{Port=$_.LocalPort} }
+}
+function New-ZapretTelegramStatusScheduler {
+    $folder=[pscustomobject]@{}
+    $folder | Add-Member ScriptMethod GetTask {
+        param($Name)
+        $script:lookedUpTask=$Name
+        if ($script:statusLookupFailure) { throw [Runtime.InteropServices.COMException]::new('Injected scheduler failure',$script:statusLookupFailure) }
+        if (-not $script:fakeTask) { throw [Runtime.InteropServices.COMException]::new('Missing fixture task',-2147024894) }
+        $task=$script:fakeTask
+        $actions=@($task.Actions | ForEach-Object {[pscustomobject]@{Type=$script:statusActionType;Path=$_.Execute;Arguments=$_.Arguments}})
+        $principal=[pscustomobject]@{UserId=$task.Principal.UserId;LogonType=$(if ($task.Principal.LogonType -eq 'Interactive') {3} else {1});RunLevel=$(if ($task.Principal.RunLevel -eq 'Limited') {0} else {1})}
+        [pscustomobject]@{State=$(switch ($task.State) {'Running' {4} 'Queued' {2} 'Disabled' {1} default {3}});Definition=[pscustomobject]@{Actions=$actions;Principal=$principal}}
+    }
+    $scheduler=[pscustomobject]@{Folder=$folder}
+    $scheduler | Add-Member ScriptMethod Connect {}
+    $scheduler | Add-Member ScriptMethod GetFolder { param($Path); if ($Path -cne '\') {throw 'Wrong task folder'}; return $this.Folder }
+    $scheduler
+}
 function Set-ZapretTelegramRuntimeAccess { param($Context); $script:aclSID=$Context.SID; $script:aclCalls++ }
 function Set-Acl { param($LiteralPath, $AclObject); $script:capturedAcl=$AclObject }
 function Get-ScheduledTask { param($TaskPath); return @($script:fakeTask, $script:fakeConnectTask) | Where-Object { $_ } }
@@ -175,6 +200,8 @@ function Reset-TelegramFixture {
     $script:shellOwnerResult = 0
     $script:shellOwnerSID = $script:testSID
     $script:identityBroken = $false
+    $script:statusLookupFailure = 0
+    $script:statusActionType = 0
     # Spaces and Unicode exercise Windows quoting without requiring a real EXE.
     $script:testRoot = Join-Path $fixture ('bundle space-' + [Guid]::NewGuid().ToString('N'))
     $context = Get-ZapretTelegramContext $script:testRoot
@@ -201,6 +228,16 @@ try {
     $script:shellOwnerSID = $testSID
     $script:shellOwnerResult = 2
     Assert-TelegramRejected { & $identityImplementation } 'Inaccessible desktop owner silently fell back to the admin user'
+    Assert-TelegramRejected { Get-ZapretTelegramFastIdentity } 'Fast identity silently fell back after token access failure'
+    $script:shellOwnerResult=0
+    Assert-Telegram ((Get-ZapretTelegramFastIdentity) -eq $testSID) 'Fast identity selected the elevated user instead of the desktop user'
+    $script:shellProcess.SessionId=8
+    Assert-TelegramRejected { Get-ZapretTelegramFastIdentity } 'Fast identity accepted another Windows session'
+    $script:shellProcess.SessionId=7
+    $script:shellOwnerSID='not-a-SID'
+    Assert-TelegramRejected { Get-ZapretTelegramFastIdentity } 'Fast identity accepted an invalid SID'
+    $script:shellProcessId=0
+    Assert-Telegram ((Get-ZapretTelegramFastIdentity) -eq $processSID) 'Fast headless identity did not use the process user'
     $context = Reset-TelegramFixture
     $script:fakeListeners = @([pscustomobject]@{ LocalPort=1443; LocalAddress='0.0.0.0'; OwningProcess=8888 })
     Enable-ZapretTelegram $testRoot
@@ -349,6 +386,7 @@ try {
     $context = Reset-TelegramFixture
     $unconfiguredRoot = Join-Path $fixture 'unconfigured'
     Assert-Telegram ((Get-ZapretTelegramStatus $unconfiguredRoot -Compact) -eq 'DISABLED') 'Absent config status is incorrect'
+    Assert-Telegram ((Get-ZapretTelegramStatus $unconfiguredRoot -Compact -Fast) -eq 'DISABLED') 'Fast status without config is incorrect'
     Assert-Telegram (-not [IO.Directory]::Exists($unconfiguredRoot) -and $aclCalls -eq 0) 'Read-only status created runtime directories or changed ACLs'
     $startup = Join-Path $context.Runtime 'startup-error.json'
     [IO.File]::WriteAllText($startup, '{"error":"OSError","message":"cannot bind; secret 0123456789abcdef0123456789abcdef"}')
@@ -379,6 +417,41 @@ try {
     Assert-TelegramRejected { Invoke-ZapretTelegramDiagnostics $testRoot -TimeoutSeconds 1 } 'Diagnostic process timeout was ignored'
     Assert-Telegram ($terminated.Count -eq 2 -and $fakeProcesses.Count -eq 1 -and $fakeProcesses[0].ProcessId -eq 1234) 'Full diagnostic timeout left onefile children or stopped the proxy'
     Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact) -eq 'RUNNING') 'Diagnostics changed the running proxy'
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'RUNNING') 'Fast status lost the owned running proxy'
+    Assert-Telegram ($script:lookedUpTask -ceq $context.TaskName) 'Fast status did not use an exact task lookup'
+    $currentConfig=Read-ZapretTelegramConfig $context
+    Assert-Telegram (-not ((Get-ZapretTelegramStatus $testRoot -Fast | ConvertTo-Json).Contains($currentConfig.secret))) 'Fast status exposed a secret'
+    $script:fakeTask.State='Ready';$script:fakeListeners=@()
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'STOPPED') 'Fast status lost a stopped task'
+    $savedTask=$script:fakeTask;$script:fakeTask=$null
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'DISABLED') 'Fast status with saved config and no task is incorrect'
+    $script:fakeListeners=@([pscustomobject]@{LocalPort=1443;LocalAddress='127.0.0.1';OwningProcess=1234})
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'UNMANAGED') 'Fast status claimed an unmanaged listener'
+    $script:fakeTask=$savedTask;$script:fakeTask.State='Running'
+    $script:fakeListeners[0].LocalAddress='0.0.0.0'
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'PORT_CONFLICT') 'Fast status accepted a public listener'
+    $script:fakeListeners[0].LocalAddress='127.0.0.1';$script:fakeListeners[0].OwningProcess=8888
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'PORT_CONFLICT') 'Fast status accepted a foreign process'
+    $script:fakeListeners[0].OwningProcess=1234
+    $execute=$script:fakeTask.Actions[0].Execute
+    $script:fakeTask.Actions[0].Execute=$execute+'.other'
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'OTHER_FOLDER') 'Fast task projection accepted another bundle'
+    $script:fakeTask.Actions[0].Execute=$execute
+    $script:statusActionType=5
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'OTHER_FOLDER') 'Fast task projection accepted a non-executable action'
+    $script:statusActionType=0
+    foreach ($field in @('UserId','LogonType','RunLevel')) {
+        $old=$script:fakeTask.Principal.$field
+        $script:fakeTask.Principal.$field=switch ($field) {'UserId' {'S-1-5-21-100-200-300-9999'} 'LogonType' {'Password'} 'RunLevel' {'Highest'}}
+        Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'OTHER_FOLDER') ('Fast task projection accepted invalid '+$field)
+        $script:fakeTask.Principal.$field=$old
+    }
+    $script:fakeListeners=@()
+    Remove-Item -LiteralPath $context.Config
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'CONFIG_MISSING') 'Fast status lost a missing configuration'
+    $script:statusLookupFailure=-2147024891
+    Assert-TelegramRejected { Get-ZapretTelegramStatusTask $context } 'Scheduler access denied was treated as missing task'
+    Assert-Telegram ((Get-ZapretTelegramStatus $testRoot -Compact -Fast) -eq 'ERROR') 'Fast status hid scheduler access denied'
     Write-Host "[OK] $checks Telegram lifecycle checks passed without real Windows changes." -ForegroundColor Green
 } finally {
     $resolved = [IO.Path]::GetFullPath($fixture)

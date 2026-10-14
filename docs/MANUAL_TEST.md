@@ -26,6 +26,7 @@ the wizard self-test simulates 13 outcomes without changing live services.
 
 ## 3. Service Manager
 
+0. Open `service.bat` normally and approve UAC. `Starting Zapret 2 NEXT...` must appear immediately; time the menu and input prompt after the elevated window opens. Repeat with Telegram disabled, stopped and running, including elevation with a different administrator account. The initial Telegram status must match an explicit status check; the desktop user's task, config and process ownership must still be used. In the disposable update lab, verify that a pending recovery completes before the menu opens and a failed recovery exits with code 1.
 1. Start `service.bat` as Administrator and install `general`.
 2. Check status, reboot, then check status again.
 3. Cycle Game Filter through off, TCP, UDP, and all; accept the safe restart prompt after each change.
