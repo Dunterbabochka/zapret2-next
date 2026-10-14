@@ -6,7 +6,8 @@ on:
 
 jobs:
   validate:
-    runs-on: windows-latest
+    # Pin the native Cygwin/WinDivert checks to a predictable Windows image.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

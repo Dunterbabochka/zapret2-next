@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
+    # Use the same pinned image as the required native runtime checks.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
