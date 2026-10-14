@@ -12,7 +12,14 @@ function Get-ZapretTelegramSessionId {
 
 function Get-ZapretTelegramShellProcessId {
     if (-not ('ZapretTelegram.NativeShell' -as [type])) {
-        Add-Type -TypeDefinition @'
+        $native=Join-Path $PSScriptRoot '..\bin\zapret-native.dll'
+        if ([IO.File]::Exists($native)) {
+            $catalog=[IO.File]::ReadAllLines((Join-Path $PSScriptRoot '..\SHA256SUMS.txt'))
+            $entry=@($catalog | Where-Object { $_ -match '^[0-9A-Fa-f]{64}\s+\*?bin[/\\]zapret-native\.dll$' })
+            if ($entry.Count -ne 1 -or (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash -ine ($entry[0] -split '\s+')[0]) { throw 'Native shell helper SHA256 mismatch.' }
+            Add-Type -Path $native -ErrorAction Stop
+        } else {
+            Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -45,6 +52,7 @@ namespace ZapretTelegram {
     }
 }
 '@ -ErrorAction Stop
+        }
     }
     $window = [ZapretTelegram.NativeShell]::GetShellWindow()
     if ($window -eq [IntPtr]::Zero) { return 0 }
@@ -458,7 +466,7 @@ function Wait-ZapretTelegramReady {
         $task = Get-ZapretTelegramTask $Context
         Assert-ZapretTelegramTaskOwner $Context $task
         $listeners = @(Get-ZapretTelegramListeners $Port)
-        $processes = @(Get-ZapretTelegramProcesses)
+        $processes = @(if ($listeners.Count) { Get-ZapretTelegramProcesses })
         foreach ($listener in $listeners) {
             if (-not (Test-ZapretTelegramListenerOwner $Context $listener $processes)) {
                 throw "Local port $Port was taken by another process during startup."

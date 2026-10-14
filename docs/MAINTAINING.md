@@ -67,7 +67,7 @@ Get-FileHash .\zapret2-next-vX.Y.Z.zip -Algorithm SHA256
 Из корня проекта:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.4.2
+powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.4.3
 powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.5.0-beta.1 -Beta
 ```
 
@@ -103,3 +103,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\validate-support.ps1
 В CI ссылки проверяются обязательно (`-RequireLinks`); локальная Windows-сессия без нужных прав может пропустить создание symlink. Экспортёр `manage-logs.ps1` также копируется в recovery: из корня установки его вызывают с `-Root .`, если обычное меню повреждено.
 
 Событие имеет случайный `eventId`: повторное слияние очереди после прерывания не создаёт дублей, а действия с одинаковыми UTC и ID операции остаются разными событиями. Старые записи без `eventId` читаются без дедупликации. При конкуренции используются файлы `pending-*.jsonl` в `runtime/log-state/<session>`; готовый экспорт повторно проверяет и объединяет их с двумя сегментами журнала. Каждый сегмент ограничен 3 МиБ, очередь — 2 МиБ, сокращённый `SESSION.txt` — 900 КиБ.
+
+## Проверка запуска и меню
+
+`utils/validate-startup.ps1` проверяет меню настроек, отмену/подтверждение, paired dry-run, потоковую проверку IPSet, контексты журнала, локальный cache и native helper в disposable-копии. Реальные службы и задачи Telegram не изменяются. Набор запускается в Validate и Release под Windows PowerShell 5.1.
+
+`packaging/benchmark-startup.py` измеряет реальный ввод и возвраты через скрытую консоль; `packaging/benchmark-telegram-layout.py` сравнивает экспериментальные сборки без изменения поставляемого runtime. Методику и границы проверки см. в [PERFORMANCE.md](PERFORMANCE.md). Сравнения скорости выполнять последовательно, отдельно от сборки и тяжёлых validation-наборов.

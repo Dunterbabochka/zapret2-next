@@ -8,12 +8,18 @@ param(
     [switch]$ReopenMenu,
     [string]$Session = '',
     [string]$Name,
-    [string]$Value
+    [string]$Value,
+    [int]$MenuProcessId=0
 )
 $ErrorActionPreference = 'Stop'
 if (-not $Root) { $Root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')) }
-. (Join-Path $PSScriptRoot 'update-release-core.ps1')
-. (Join-Path $PSScriptRoot 'update-release-state.ps1')
+. (Join-Path $PSScriptRoot 'menu-input.ps1')
+if ($Action -in @('SetSetting','ToggleCheck')) {
+    . (Join-Path $PSScriptRoot 'menu-settings.ps1')
+} elseif ($Action -ne 'ReadMenuChoice') {
+    . (Join-Path $PSScriptRoot 'update-release-core.ps1')
+    if ($Action -in @('Prepare','Apply','Recover','ReleaseMenu')) { . (Join-Path $PSScriptRoot 'update-release-state.ps1') }
+}
 . (Join-Path $PSScriptRoot 'session-log.ps1')
 $logSession=''; $logOperation=''
 if ($Action -in @('Apply','Recover')) {
@@ -25,81 +31,6 @@ if ($Action -in @('Apply','Recover')) {
 Initialize-ZapretLog -Root $Root -Component update -Action $Action -SessionId $logSession -OperationId $logOperation
 $failed = $false
 $workerLease = $null
-
-function Get-ReleaseMenuBanner([string]$Root) {
-    try {
-        $cache = Read-ReleaseJson (Join-Path (Get-ReleaseUpdateDirectory $Root) 'check.json')
-        if ($cache -and $cache.Status -eq 'available' -and $cache.Repository -ceq (Get-ReleaseRepository $Root) -and
-            (Test-ReleaseNewer $cache.Offer.Version (Get-ReleaseVersion $Root))) {
-            return 'Доступна новая версия ' + $cache.Offer.Version + '. Чтобы обновить Zapret, введите 111'
-        }
-    } catch {}
-    return ''
-}
-function Read-ReleaseMenuChoice([string]$Root) {
-    $prompt = '   Select option (0-15): '
-    # PowerShell 5.1 otherwise encodes Console.Write text in the OEM code page;
-    # English Windows replaces the Cyrillic update notification with '?'.
-    if (-not [Console]::IsOutputRedirected) { [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false) }
-    if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) {
-        $banner = Get-ReleaseMenuBanner $Root
-        if ($banner) { [Console]::WriteLine($banner) }
-        [Console]::Write($prompt)
-        $answer = [Console]::ReadLine()
-        if ($null -eq $answer) { return 0 }
-        if ($answer -match '^(?:[0-9]|1[0-5]|111)$') { return [int]$answer }
-        return 255
-    }
-    # Use a small local polling loop, not another process/network request for
-    # every repaint. Reserve space above the prompt and preserve typed digits.
-    [Console]::WriteLine('')
-    [Console]::WriteLine('')
-    $banner = ''; $answer = ''; $lastPoll = [DateTime]::MinValue
-    [Console]::Write($prompt)
-    while ($true) {
-        if (([DateTime]::UtcNow - $lastPoll).TotalMilliseconds -ge 250) {
-            $next = Get-ReleaseMenuBanner $Root
-            if ($next -cne $banner) {
-                $banner = $next
-                [Console]::Write("`r`n")
-                if ($banner) { [Console]::WriteLine($banner) }
-                [Console]::Write($prompt + $answer)
-            }
-            $lastPoll = [DateTime]::UtcNow
-        }
-        if ([Console]::KeyAvailable) {
-            $key = [Console]::ReadKey($true)
-            if ($key.Key -eq [ConsoleKey]::Enter) {
-                [Console]::WriteLine('')
-                if ($answer -match '^(?:[0-9]|1[0-5]|111)$') { return [int]$answer }
-                return 255
-            }
-            if ($key.Key -eq [ConsoleKey]::Backspace) {
-                if ($answer.Length) { $answer=$answer.Substring(0,$answer.Length-1);[Console]::Write("`b `b") }
-            } elseif ($key.KeyChar -match '[0-9]' -and $answer.Length -lt 3) {
-                $answer += $key.KeyChar; [Console]::Write($key.KeyChar)
-            }
-        } else { Start-Sleep -Milliseconds 25 }
-    }
-}
-function Set-ReleaseMenuSetting([string]$Root, [string]$Name, [string]$Value) {
-    $modes = @{
-        'game_filter.mode'=@('off','tcp','udp','all');'ipset_filter.mode'=@('loaded','none','any')
-        'voice_filter.mode'=@('off','standard','compatible');'discord_fake.mode'=@('current','steam','google')
-        'game_fake.mode'=@('current','dbank-v2','steam')
-    }
-    if ($Name -ne 'fake-defaults' -and (-not $modes.ContainsKey($Name) -or $Value -notin $modes[$Name])) { throw 'Invalid setting.' }
-    if ($Name -eq 'fake-defaults' -and $Value -cne 'current') { throw 'Invalid fake defaults.' }
-    $gate = Enter-ZapretBundleOperation $Root
-    try {
-        $oldValue = try { if (Test-Path -LiteralPath (Join-Path $Root ('utils\'+$Name))) { ([IO.File]::ReadAllText((Join-Path $Root ('utils\'+$Name)))).Trim() } else { '' } } catch { Write-ZapretLogException $_ -Warning; '' }
-        if ($Name -eq 'fake-defaults') {
-            foreach ($file in @('discord_fake.mode','game_fake.mode')) { Write-AtomicTextFile (Join-Path $Root ('utils\' + $file)) "current`r`n" }
-        } else { Write-AtomicTextFile -Path (Join-Path $Root ('utils\' + $Name)) -Content ($Value + "`r`n") }
-    }
-    finally { Exit-ZapretBundleOperation $gate }
-    Write-ZapretLogEvent -Stage settings -Result saved -Code SettingsSaved -Details @{setting=$Name;oldValue=$oldValue;newValue=$Value}
-}
 
 try {
     switch ($Action) {
@@ -151,6 +82,9 @@ try {
                     if ($timer.Elapsed.TotalSeconds -gt 15) { throw 'The old menu did not release control. Run 111 again.' }
                     Start-Sleep -Milliseconds 50
                 }
+                # Persistent menu hosts release the marker just before exiting.
+                # Wait for that exact process lifetime before replacing scripts.
+                Wait-ReleaseMenuHost (Join-Path $session 'menu-released')
                 Start-Sleep -Milliseconds 150
             }
             $null = Invoke-ReleaseApply $Root
@@ -159,17 +93,17 @@ try {
         'ReleaseMenu' {
             Close-ZapretLogMenu -Handoff
             $transaction = Read-ReleaseTransaction $Root
-            [IO.File]::WriteAllText((Join-Path (Get-ReleaseSession $Root $transaction) 'menu-released'), 'released')
+            $release='released'
+            if ($MenuProcessId) {
+                $menu=Get-Process -Id $MenuProcessId -ErrorAction Stop
+                try { $release=@{ProcessId=$MenuProcessId;StartedTicks=$menu.StartTime.ToUniversalTime().Ticks} | ConvertTo-Json -Compress }
+                finally { $menu.Dispose() }
+            }
+            Write-AtomicTextFile (Join-Path (Get-ReleaseSession $Root $transaction) 'menu-released') $release
         }
         'SetSetting' { Set-ReleaseMenuSetting $Root $Name $Value }
         'ToggleCheck' {
-            $gate = Enter-ZapretBundleOperation $Root
-            try {
-                $path = Join-Path $Root 'utils\check_updates.enabled'
-                if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) }
-                else { Write-AtomicTextFile $path "enabled`r`n" }
-                Write-ZapretLogEvent -Stage settings -Result saved -Code SettingsSaved -Details @{setting='check_updates.enabled';autoCheck=[IO.File]::Exists($path)}
-            } finally { Exit-ZapretBundleOperation $gate }
+            Switch-ReleaseMenuCheck $Root
         }
     }
 } catch {

@@ -26,15 +26,7 @@ try {
 } catch {}
 Initialize-ZapretLog -Root $Root -Component menu -Action $(if ($Action -eq 'Event') {'Select'} else {$Action}) -SessionId $SessionId -OwnerProcessId $ownerId
 if ($Action -eq 'Start') {
-    try {
-        $defaults=@{'game_filter.mode'='off';'ipset_filter.mode'='loaded';'voice_filter.mode'='compatible';'discord_fake.mode'='current';'game_fake.mode'='current'}
-        foreach ($name in $defaults.Keys) {
-            $path=Join-Path $Root ('utils\'+$name)
-            $value=if ([IO.File]::Exists($path)) { [IO.File]::ReadAllText($path).Trim() } else {$defaults[$name]}
-            Write-ZapretLogEvent -Action Status -Stage snapshot -Result saved -Code StateObserved -Details @{setting=$name;newValue=$value}
-        }
-        Write-ZapretLogEvent -Action Status -Stage snapshot -Code StateObserved -Details @{autoCheck=[IO.File]::Exists((Join-Path $Root 'utils\check_updates.enabled'))}
-    } catch { Write-ZapretLogException $_ -Warning }
+    Write-ZapretLogSettingsSnapshot $Root
     $id=if ($script:ZapretLog -and $env:ZAPRET_LOG_DISABLED -ne '1') {$script:ZapretLog.Id} else {'disabled'}
     if ($MenuBootstrap) {
         Write-Output ('SESSION='+$id)

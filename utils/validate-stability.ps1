@@ -121,6 +121,7 @@ exit $LASTEXITCODE
     $engineRoot = Join-Path $fixture 'engine'
     New-Item -ItemType Directory -Path (Join-Path $engineRoot 'bin'), (Join-Path $engineRoot 'utils') -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'invoke-winws.ps1') -Destination (Join-Path $engineRoot 'utils\invoke-winws.ps1')
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'engine-control.ps1') -Destination (Join-Path $engineRoot 'utils\engine-control.ps1')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'session-log.ps1') -Destination (Join-Path $engineRoot 'utils\session-log.ps1')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'bundle-operation.ps1') -Destination (Join-Path $engineRoot 'utils\bundle-operation.ps1')
     $engineSource = Join-Path $engineRoot 'FixtureEngine.cs'
@@ -154,6 +155,25 @@ public class FixtureEngine {
         Assert-Stability ($code -eq $case.Exit) "Incorrect launcher exit for $($case.Mode): $code"
         if ($case.Mode -eq 'timeout') { Assert-Stability ($timer.Elapsed.TotalSeconds -lt 8) 'Engine validation did not enforce its timeout' }
     }
+
+    # A launch that exits immediately must fail immediately, while retaining
+    # the complete observation window for a surviving engine.
+    $probe=Join-Path $engineRoot 'launch-probe.ps1'
+    $probeText=@'
+param($Root,$Config)
+$ErrorActionPreference='Stop'
+. (Join-Path $Root 'utils\engine-control.ps1')
+function Get-CimInstance { param($ClassName,$Filter); return @() }
+exit (Invoke-ZapretEngine -Config $Config -LogPrefix (Join-Path $Root 'early') -ReplaceExisting -StartupWaitSeconds 3)
+'@
+    [IO.File]::WriteAllText($probe,$probeText)
+    [IO.File]::WriteAllText($fakeConfig,'reject')
+    $timer=[Diagnostics.Stopwatch]::StartNew()
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Root $engineRoot -Config $fakeConfig | Out-Host
+    Assert-Stability ($LASTEXITCODE -eq 14) 'Early launch exit was reported as success'
+    Assert-Stability ($timer.Elapsed.TotalSeconds -lt 3) 'Early engine failure waited the full startup window'
+    $releasedLock=[IO.File]::Open((Join-Path $engineRoot 'runtime\engine-operation.lock'),'Open','ReadWrite','None')
+    $releasedLock.Dispose()
 
     Reset-ServiceFixture
     $before = (Get-FileHash $serviceConfig).Hash

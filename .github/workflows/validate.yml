@@ -37,6 +37,9 @@ jobs:
       - name: Validate update and service rollback on Windows PowerShell 5.1
         shell: powershell
         run: ./utils/validate-stability.ps1
+      - name: Validate persistent menu and paired rendering
+        shell: powershell
+        run: ./utils/validate-startup.ps1
       - name: Validate compatibility wizard and failure simulations
         shell: powershell
         run: |

@@ -55,7 +55,7 @@ $topFiles = @(
 )
 $dirs = @('bin','lua','lists','presets','utils','strategies','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
-$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md', 'ADVANCED.md', 'MAINTAINING.md', 'SUPPORT.md', 'UPDATING.md')
+$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md', 'ADVANCED.md', 'MAINTAINING.md', 'SUPPORT.md', 'UPDATING.md', 'PERFORMANCE.md')
 New-Item -ItemType Directory -Path (Join-Path $stage 'docs') -Force | Out-Null
 foreach ($document in $publicDocs) {
     Copy-Item -LiteralPath (Join-Path $root ('docs\' + $document)) -Destination (Join-Path $stage 'docs') -Force
@@ -77,6 +77,15 @@ foreach ($launcher in $strategyLaunchers) {
         throw "Missing public strategy launcher: $launcher"
     }
 }
+# Compile once while packaging instead of on the user's first menu startup.
+$nativeOutput=Join-Path $stage 'bin\zapret-native.dll'
+if ([IO.File]::Exists($nativeOutput)) { [IO.File]::Delete($nativeOutput) }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'build-native-helper.ps1') -Output $nativeOutput
+if ($LASTEXITCODE -ne 0) { throw 'Native shell helper build failed.' }
+$catalogPath=Join-Path $stage 'SHA256SUMS.txt'
+$catalog=@([IO.File]::ReadAllLines($catalogPath) | Where-Object { $_ -notmatch '\sbin[/\\]zapret-native\.dll$' })
+$catalog+=((Get-FileHash -LiteralPath $nativeOutput -Algorithm SHA256).Hash+'  bin/zapret-native.dll')
+[IO.File]::WriteAllLines($catalogPath,$catalog,[Text.UTF8Encoding]::new($false))
 # Only provenance and the upstream license are shipped; developer Python
 # sources and tests stay outside the ready-to-use Windows archive.
 $telegramNoticeDir = Join-Path $stage 'docs\third_party\tg-ws-proxy'
@@ -102,11 +111,13 @@ if ($Beta) {
 foreach ($sourceOnlyPath in @(
     'utils\build-release.ps1',
     'utils\build-telegram.ps1',
+    'utils\build-native-helper.ps1',
     'utils\configure-repository.ps1',
     'utils\sync-upstream-ipset.ps1',
     'utils\test-custom-presets.ps1',
     'utils\validate-release-update.ps1',
     'utils\validate-session-log.ps1',
+    'utils\validate-startup.ps1',
     'lists\ipset-all.txt.backup'
 )) {
     Remove-Item (Join-Path $stage $sourceOnlyPath) -Force -ErrorAction SilentlyContinue
@@ -126,7 +137,7 @@ foreach ($entry in $releaseModes.GetEnumerator()) {
 # Fresh installations check releases by default. Updates preserve the user's
 # enabled/disabled marker independently of the packaged default.
 [IO.File]::WriteAllText((Join-Path $stage 'utils\check_updates.enabled'), "enabled`r`n", [Text.Encoding]::ASCII)
-foreach ($updater in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1','session-log.ps1','manage-logs.ps1')) {
+foreach ($updater in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','release-info.ps1','menu-input.ps1','menu-settings.ps1','menu.ps1','run-preset.ps1','engine-control.ps1','bundle-operation.ps1','session-log.ps1','manage-logs.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $stage ('utils\'+$updater)) -PathType Leaf)) { throw "Missing release update component: $updater" }
 }
 foreach ($experimentalPreset in @(

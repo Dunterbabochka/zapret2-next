@@ -60,11 +60,13 @@ foreach ($scriptPath in Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1'
 }
 
 $runnerContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'run-preset.bat') -Raw
-if ($runnerContent -notmatch 'invoke-winws\.ps1') {
+$runnerHost = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'run-preset.ps1') -Raw
+if ($runnerContent -notmatch 'run-preset\.ps1' -or $runnerHost -notmatch 'Invoke-ZapretEngine') {
     Add-ValidationError 'run-preset.bat must use the logging winws2 launcher.'
 }
 
 $serviceContent = Get-Content -LiteralPath (Join-Path $root 'service.bat') -Raw
+$menuContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'menu.ps1') -Raw
 $versionPath = Join-Path $root '.service\version.txt'
 $projectVersion = if (Test-Path -LiteralPath $versionPath -PathType Leaf) {
     (Get-Content -LiteralPath $versionPath -Raw).Trim()
@@ -74,7 +76,7 @@ $projectVersion = if (Test-Path -LiteralPath $versionPath -PathType Leaf) {
 if ($projectVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
     Add-ValidationError '.service\version.txt must contain one semantic version such as 0.2.1 or 0.3.0-beta.1.'
 }
-if ($serviceContent -notmatch '(?m)^if exist "%ROOT%\\\.service\\version\.txt" set /p VERSION=<' -or
+if ($menuContent -notmatch 'Get-ReleaseVersion \$root' -or
     $serviceContent -match '(?m)^set "VERSION=\d') {
     Add-ValidationError 'service.bat must read its installed version from .service\version.txt instead of hard-coding it.'
 }
@@ -90,24 +92,24 @@ if ($releaseBuilderAvailable -and ($buildReleaseContent -notmatch 'Join-Path \$s
     $buildReleaseContent -notmatch 'Stable release version')) {
     Add-ValidationError 'build-release.ps1 must stamp the requested version and reject mismatched stable releases.'
 }
-if ($serviceContent -notmatch '(?m)^echo {6}13\. Run Diagnostics\r?$' -or
-    $serviceContent -notmatch '(?m)^echo {6}14\. Run Tests\r?$' -or
-    $serviceContent -notmatch '(?m)^echo {7}7\. Discord Voice' -or
-    $serviceContent -notmatch '(?m)^echo {7}8\. UDP Fake Profiles' -or
-    $serviceContent -notmatch '(?m)^echo {6}15\. Clear Discord Cache') {
+if ($menuContent -notmatch '13\. Run Diagnostics' -or
+    $menuContent -notmatch '14\. Run Tests' -or
+    $menuContent -notmatch '7\. Discord Voice' -or
+    $menuContent -notmatch '8\. UDP Fake Profiles' -or
+    $menuContent -notmatch '15\. Clear Discord Cache') {
     Add-ValidationError 'The service menu items are not aligned or a required settings/tool item is missing.'
 }
-if ($serviceContent -notmatch '-Action ReadMenuChoice' -or
-    $serviceContent -notmatch 'goto voice_filter' -or
-    $serviceContent -notmatch 'goto fake_profiles' -or
-    $serviceContent -notmatch 'goto clear_discord_cache' -or
-    $serviceContent -notmatch 'Strategy: !CURRENT_PRESET!   Game: !GAME_MODE!   IPSet: !IPSET_MODE!   Voice: !VOICE_MODE!' -or
-    $serviceContent -notmatch 'UDP fakes: Discord=!DISCORD_FAKE!   Game=!GAME_FAKE!') {
+if ($serviceContent -notmatch 'menu\.ps1' -or
+    $menuContent -notmatch 'Read-ReleaseMenuChoice' -or
+    $menuContent -notmatch 'Set-ZapretMenuMode' -or
+    $menuContent -notmatch 'clear-discord-cache\.ps1' -or
+    $menuContent -notmatch 'Strategy:.*Game:.*IPSet:.*Voice:' -or
+    $menuContent -notmatch 'UDP fakes: Discord=.*Game=') {
     Add-ValidationError 'The service menu must expose the combined configuration, UDP fake selector and cache cleanup.'
 }
-if ($serviceContent -notmatch '(?m)^echo {7}9\. Telegram' -or
-    $serviceContent -notmatch 'goto telegram' -or
-    $serviceContent -notmatch 'manage-telegram\.ps1') {
+if ($menuContent -notmatch '9\. Telegram' -or
+    $menuContent -notmatch 'Show-ZapretTelegramMenu' -or
+    $menuContent -notmatch 'telegram-control\.ps1') {
     Add-ValidationError 'The service menu must expose the bundled Telegram module.'
 }
 try {
@@ -123,9 +125,8 @@ try {
 } catch {
     Add-ValidationError "Telegram runtime integrity failed: $($_.Exception.Message)"
 }
-if ($serviceContent -notmatch ':get_service_status' -or
-    $serviceContent -notmatch 'sc\.exe query' -or
-    $serviceContent -notmatch 'manage-service\.ps1') {
+if ($menuContent -notmatch 'Get-Service -Name winws2' -or
+    $menuContent -notmatch 'Set-ZapretServiceConfiguration') {
     Add-ValidationError 'The service manager must use locale-independent status reads and wait for stop/start transitions.'
 }
 foreach ($helper in @('ipset-utils.ps1', 'service-control.ps1', 'manage-service.ps1', 'validate-stability.ps1')) {
@@ -133,7 +134,7 @@ foreach ($helper in @('ipset-utils.ps1', 'service-control.ps1', 'manage-service.
         Add-ValidationError "Missing stability helper: $helper"
     }
 }
-if ($serviceContent -notmatch '(?m)^start "Zapret 2 NEXT tests" powershell -NoExit ') {
+if ($menuContent -notmatch 'Start-Process powershell.exe -ArgumentList \(''-NoExit ') {
     Add-ValidationError 'The test console must stay open so failures remain visible.'
 }
 $cacheCleanupPath = Join-Path $PSScriptRoot 'clear-discord-cache.ps1'
@@ -156,9 +157,9 @@ if ($releaseBuilderAvailable) {
         }
     }
 }
-if ($serviceContent -notmatch 'discord_fake\.mode' -or
-    $serviceContent -notmatch 'game_fake\.mode' -or
-    $serviceContent -notmatch 'call :read_fake_modes') {
+if ($menuContent -notmatch 'discord_fake\.mode' -or
+    $menuContent -notmatch 'game_fake\.mode' -or
+    $menuContent -notmatch 'Get-ZapretMenuModes') {
     Add-ValidationError 'Service Manager must persist independent allowlisted Discord and Game fake selections.'
 }
 $rendererContent = Get-Content -LiteralPath $renderer -Raw
@@ -196,15 +197,17 @@ foreach ($fakePayload in $fakePayloadHashes.GetEnumerator()) {
         Add-ValidationError "SHA256SUMS.txt is missing opt-in UDP fake payload: $($fakePayload.Key)"
     }
 }
-if ($serviceContent -notmatch 'Classic presets' -or $serviceContent -notmatch 'NEXT presets' -or
-    $serviceContent -match 'Confirmed experimental presets|NEXT AGGRESSIVE') {
+if ($menuContent -notmatch 'Classic presets' -or $menuContent -notmatch 'NEXT presets' -or
+    $menuContent -match 'Confirmed experimental presets|NEXT AGGRESSIVE') {
     Add-ValidationError 'Service selection must expose Classic and NEXT columns and keep AGGRESSIVE private.'
 }
-$ipsetMenuBlock = [regex]::Match($serviceContent, '(?ms)^:ipset_filter\r?\n.*?(?=^:[A-Za-z_]+\r?$)').Value
-if ($ipsetMenuBlock -notmatch '-Action SetSetting -Name ipset_filter\.mode') {
+$ipsetMenuBlock = [regex]::Match($menuContent, '(?ms)^function Set-ZapretMenuMode.*?(?=^function )').Value
+if ($ipsetMenuBlock -notmatch 'ipset_filter\.mode') {
     Add-ValidationError 'The IPSet menu must persist its selection in ipset_filter.mode.'
 }
-if ($ipsetMenuBlock -match 'newmode=any' -or $ipsetMenuBlock -notmatch '(?i)any is diagnostic') {
+$ipsetCycle = [regex]::Match($ipsetMenuBlock, '(?m)^\s*5 \{[^\r\n]+').Value
+if ($ipsetMenuBlock -match '\$value=''any''' -or $ipsetCycle -notmatch '''loaded''' -or
+    $ipsetCycle -notmatch '''none''' -or $ipsetCycle -match '''any''') {
     Add-ValidationError 'The service IPSet menu must keep any diagnostic-only and must not persist it as a normal cycle mode.'
 }
 if ($ipsetMenuBlock -match 'ipset-all\.txt|IPSET_BACKUP|type nul|copy /y') {

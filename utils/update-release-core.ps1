@@ -1,5 +1,6 @@
 ﻿# Transport, package validation and durable update state. Tests replace boundary
 # functions, never disable checksum/path checks or operate on the developer tree.
+. (Join-Path $PSScriptRoot 'release-info.ps1')
 . (Join-Path $PSScriptRoot 'session-log.ps1')
 . (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 . (Join-Path $PSScriptRoot 'ipset-utils.ps1')
@@ -10,19 +11,6 @@ $script:releaseFiles = @('README.md','LICENSE.txt','SECURITY.md','THIRD_PARTY_NO
 $script:releaseDirectories = @('bin','lua','presets','strategies','utils','docs','.service')
 $script:releaseModeNames = @('game_filter.mode','ipset_filter.mode','voice_filter.mode','discord_fake.mode','game_fake.mode','check_updates.enabled')
 
-function Get-ReleaseUpdateDirectory([string]$Root) { Join-Path $Root 'runtime\release-update' }
-function Write-ReleaseJson([string]$Path, $Value) {
-    Write-AtomicTextFile -Path $Path -Content (($Value | ConvertTo-Json -Depth 24) + "`r`n") -Encoding ([Text.UTF8Encoding]::new($false))
-}
-function Read-ReleaseJson([string]$Path) {
-    if (Test-Path -LiteralPath $Path -PathType Leaf) {
-        # Menu polling must not prevent the worker's atomic cache replacement.
-        $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
-        $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true)
-        try { $reader.ReadToEnd() | ConvertFrom-Json }
-        finally { $reader.Dispose() }
-    }
-}
 function Assert-ReleaseChildPath([string]$Parent, [string]$Path) {
     $base = [IO.Path]::GetFullPath($Parent).TrimEnd('\') + '\'
     $full = [IO.Path]::GetFullPath($Path)
@@ -65,21 +53,6 @@ function Initialize-ReleaseUpdateDirectory([string]$Root) {
     if ($info.PSObject.Methods['SetAccessControl']) { $info.SetAccessControl($acl) }
     else { [Security.AccessControl.FileSystemAclExtensions]::SetAccessControl($info, $acl) }
     return $directory
-}
-function Get-ReleaseRepository([string]$Root) {
-    $repository = ([IO.File]::ReadAllText((Join-Path $Root '.service\repository.txt'))).Trim()
-    if ($repository -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$') { throw 'Invalid release repository.' }
-    return $repository
-}
-function Get-ReleaseVersion([string]$Root) {
-    $version = ([IO.File]::ReadAllText((Join-Path $Root '.service\version.txt'))).Trim()
-    if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid installed version.' }
-    return $version
-}
-function Test-ReleaseNewer([string]$Remote, [string]$Installed) {
-    if ($Remote -notmatch '^\d+\.\d+\.\d+$') { return $false }
-    $localBase = ($Installed -split '-', 2)[0]
-    return ([version]$Remote -gt [version]$localBase -or ($Remote -eq $localBase -and $Installed.Contains('-')))
 }
 function Get-ReleaseApiUrl([string]$Repository) { 'https://api.github.com/repos/' + $Repository + '/releases/latest' }
 function Assert-ReleaseAssetUrl([string]$Url, [string]$Repository, [string]$Tag, [string]$Name) {

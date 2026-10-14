@@ -1,6 +1,7 @@
 """Build the pinned headless Windows runtime and its integrity/license manifests."""
 from __future__ import annotations
 
+import argparse
 import hashlib
 import importlib.metadata
 import json
@@ -49,6 +50,16 @@ def collect_licenses():
 
 
 def main():
+    global OUT, WORK
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--layout', choices=('onefile', 'onedir'), default='onefile')
+    parser.add_argument('--output', type=Path, help='Isolated output for packaging experiments')
+    args = parser.parse_args()
+    if args.layout == 'onedir' and args.output is None:
+        parser.error('onedir experiments require --output; the shipping layout remains onefile')
+    if args.output:
+        OUT = args.output.resolve()
+        WORK = OUT.parent / (OUT.name + '-build')
     if sys.platform != "win32" or sys.maxsize <= 2**32:
         raise RuntimeError("Build Telegram runtime on Windows x64")
     verify_sources()
@@ -58,7 +69,7 @@ def main():
     collect_licenses()
     subprocess.run([
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
-        "--onefile", "--windowed", "--noupx", "--name", "zapret-telegram",
+        '--' + args.layout, "--windowed", "--noupx", "--name", "zapret-telegram",
         "--paths", str(VENDOR), "--collect-data", "certifi",
         "--hidden-import", "cryptography.hazmat.backends.openssl",
         "--distpath", str(OUT), "--workpath", str(WORK / "work"),
@@ -70,7 +81,8 @@ def main():
     smoke_env = os.environ.copy()
     (WORK / "tmp").mkdir(exist_ok=True)
     smoke_env["TMP"] = smoke_env["TEMP"] = str(WORK / "tmp")
-    subprocess.run([str(OUT / "zapret-telegram.exe"), "--self-test", "--output", str(report_path)],
+    executable = OUT / ("zapret-telegram.exe" if args.layout == 'onefile' else 'zapret-telegram/zapret-telegram.exe')
+    subprocess.run([str(executable), "--self-test", "--output", str(report_path)],
                    timeout=45, check=True, env=smoke_env)
     report = json.loads(report_path.read_text())
     if not report.get("ok"):
@@ -79,13 +91,16 @@ def main():
                   "upstream_commit": json.loads((VENDOR / "SOURCE.json").read_text())["commit"],
                   "launcher_sha256": hashlib.sha256((ROOT / "telegram" / "launcher.py").read_bytes()).hexdigest(),
                   "python": sys.version.split()[0], "architecture": "windows-x86_64",
-                  "entry_point": "telegram/launcher.py"}
+                  "entry_point": "telegram/launcher.py", "layout": args.layout}
     (OUT / "BUILD.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
     entries = []
     for path in sorted(OUT.rglob("*")):
         if path.is_file() and path.name != "SHA256SUMS.txt":
             entries.append(f"{hashlib.sha256(path.read_bytes()).hexdigest().upper()}  {path.relative_to(OUT).as_posix()}")
     (OUT / "SHA256SUMS.txt").write_text("\n".join(entries) + "\n", encoding="ascii")
+    if args.output:
+        print(f'Experimental Telegram runtime built and verified: {executable}')
+        return
     # Keep the bundle's public integrity catalog in sync with a rebuilt runtime.
     sums = ROOT / "SHA256SUMS.txt"
     retained = [line for line in sums.read_text(encoding="utf-8-sig").splitlines()

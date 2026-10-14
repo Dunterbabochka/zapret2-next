@@ -95,7 +95,7 @@ function ConvertTo-ZapretSafeEvent($Event) {
         [string]$Event.operationId -notmatch '^[a-f0-9]{32}$' -or
         [string]$Event.component -notin @('session','menu','update','service','engine','renderer','ipset','hosts','telegram','cache','support','wizard','voice','tests','diagnostics','logging') -or
         [string]$Event.action -notin @('Start','Finish','Check','Prepare','Apply','Recover','ReleaseMenu','ReadMenuChoice','SetSetting','ToggleCheck','Install','Refresh','Remove','Render','Validate','Launch','Update','Enable','Disable','Restart','Connect','Status','Diagnose','Menu','Export','Scan','Clear','Select','Restore','HTTP','Download','Checkpoint','Cleanup','Rollback') -or
-        [string]$Event.stage -notin @('begin','end','result','request','retry','validate','extract','settings','files','stop','start','restore','rollback','cleanup','interrupted','truncated','selection','snapshot','handoff') -or
+        [string]$Event.stage -notin @('begin','end','result','request','retry','validate','extract','settings','files','stop','start','restore','rollback','cleanup','interrupted','truncated','selection','snapshot','handoff','ready','render') -or
         [string]$Event.result -notin @('started','ok','error','warning','canceled','interrupted','available','current','unavailable','running','stopped','absent','pending','saved','applied','deferred') -or
         [string]$Event.code -notin @('None','OperationFailed','OperationCanceled','OperationInterrupted','SessionInterrupted','JournalTruncated','JournalUnavailable','ExportIncomplete','HTTPFailed','DownloadRetry','UpdateFailed','RollbackFailed','CleanupPending','NativeFailed','InvalidSelection','StateObserved','SettingsSaved','SettingsApplied','SettingsDeferred')) { return $null }
     $date = [datetime]::MinValue
@@ -131,7 +131,7 @@ function ConvertTo-ZapretSafeEvent($Event) {
                 'preset' { @('general','ALT','ALT3','ALT5','ALT11','ALT12','ALT13','EXP','FAKE TLS AUTO ALT2','NEXT SAFE','NEXT BALANCED','VOICE','CUSTOM SAFE','CUSTOM BALANCED','CUSTOM UNIVERSAL') }
                 'item' { @('bin','lua','presets','strategies','utils','docs','.service','README.md','LICENSE.txt','SECURITY.md','THIRD_PARTY_NOTICES.md','ENGINE_VERSION','SHA256SUMS.txt','service.bat') }
                 'exceptionType' { @('IOException','UnauthorizedAccessException','InvalidOperationException','ArgumentException','Exception','MethodInvocationException','RuntimeException','OperationCanceledException','TimeoutException','Win32Exception','FileNotFoundException','DirectoryNotFoundException','InvalidDataException','CommandNotFoundException','ParseException','WebException') }
-                'script' { @('service.bat','run-preset.bat','manage-service.ps1','service-control.ps1','render-config.ps1','invoke-winws.ps1','update-ipset.ps1','prepare-hosts.ps1','manage-telegram.ps1','telegram-control.ps1','clear-discord-cache.ps1','support-diagnostics.ps1','support-diagnostics-core.ps1','compatibility-wizard.ps1','compatibility-wizard-main.ps1','discord-voice-diagnostic.ps1','test-presets.ps1','update-release.ps1','update-release-core.ps1','update-release-state.ps1','session-log.ps1','manage-logs.ps1','validate.ps1') }
+                'script' { @('service.bat','run-preset.bat','manage-service.ps1','service-control.ps1','render-config.ps1','invoke-winws.ps1','update-ipset.ps1','prepare-hosts.ps1','manage-telegram.ps1','telegram-control.ps1','clear-discord-cache.ps1','support-diagnostics.ps1','support-diagnostics-core.ps1','compatibility-wizard.ps1','compatibility-wizard-main.ps1','discord-voice-diagnostic.ps1','test-presets.ps1','update-release.ps1','update-release-core.ps1','update-release-state.ps1','session-log.ps1','manage-logs.ps1','validate.ps1','menu.ps1','menu-input.ps1','menu-settings.ps1','release-info.ps1','run-preset.ps1','engine-control.ps1') }
                 'telegramState' { @('RUNNING','STOPPED','DISABLED','ERROR','OTHER_FOLDER','PORT_CONFLICT','UNMANAGED','CONFIG_MISSING') }
                 'supportCode' { @('EnvironmentReadFailed','OperationBusy','EngineStartFailed','ScanFailed','Canceled','EngineCleanupFailed','ServiceRestoreFailed','StateChanged','StateReadFailed','EnvironmentBlocked','DNSResolutionFailed') }
                 'fileOperation' { @('backup','install','restore') }
@@ -224,6 +224,40 @@ function Write-ZapretLogEvent {
         if (-not $gate) { Save-ZapretLogPending $ctx $event; return }
         Flush-ZapretLogPendingLocked $ctx
         Add-ZapretLogEventLocked $ctx $event
+    } catch { Show-ZapretLogWarning } finally { if ($gate) { Exit-ZapretLogGate $gate } }
+}
+function Invoke-ZapretLoggedOperation {
+    param([string]$Root,[string]$Component,[string]$Action,[scriptblock]$Body)
+    $previous=$script:ZapretLog
+    $failed=$false
+    try {
+        Initialize-ZapretLog -Root $Root -Component $Component -Action $Action
+        & $Body
+    } catch { $failed=$true; Write-ZapretLogException $_; throw }
+    finally {
+        Complete-ZapretLogOperation -ExitCode $(if ($failed) {1} else {0})
+        $script:ZapretLog=$previous
+    }
+}
+function Write-ZapretLogSettingsSnapshot([string]$Root) {
+    if (-not $script:ZapretLog -or $env:ZAPRET_LOG_DISABLED -eq '1') { return }
+    $ctx=$script:ZapretLog; $gate=$null
+    try {
+        $events=[Collections.Generic.List[object]]::new()
+        $defaults=@{'game_filter.mode'='off';'ipset_filter.mode'='loaded';'voice_filter.mode'='compatible';'discord_fake.mode'='current';'game_fake.mode'='current'}
+        $details=@(foreach ($name in $defaults.Keys) {
+            $path=Join-Path $Root ('utils\'+$name)
+            $value=if ([IO.File]::Exists($path)) { [IO.File]::ReadAllText($path).Trim() } else {$defaults[$name]}
+            @{setting=$name;newValue=$value}
+        })+@(@{autoCheck=[IO.File]::Exists((Join-Path $Root 'utils\check_updates.enabled'))})
+        foreach ($detail in $details) {
+            $events.Add([pscustomobject]@{schemaVersion=1;eventId=[guid]::NewGuid().ToString('N');utc=[datetime]::UtcNow.ToString('o');sessionId=$ctx.Id;operationId=$ctx.OperationId;component=$ctx.Component;action='Status';stage='snapshot';result='saved';code='StateObserved';details=$detail})
+        }
+        $gate=Enter-ZapretLogGate $Root 0
+        if ($gate) {
+            Flush-ZapretLogPendingLocked $ctx
+            foreach ($event in $events) { Add-ZapretLogEventLocked $ctx $event }
+        } else { foreach ($event in $events) { Save-ZapretLogPending $ctx $event } }
     } catch { Show-ZapretLogWarning } finally { if ($gate) { Exit-ZapretLogGate $gate } }
 }
 function Write-ZapretLogException {
@@ -325,14 +359,19 @@ function Initialize-ZapretLog {
         $version='unknown'
         try { $candidate=[IO.File]::ReadAllText((Join-Path $Root '.service\version.txt')).Trim(); if ($candidate -match '^\d{1,5}\.\d{1,5}\.\d{1,5}(?:-(?:alpha|beta|rc)(?:[.\d-])*)?$') { $version=$candidate } } catch {}
         if (-not [IO.File]::Exists($metaPath)) { Write-ZapretLogJson $metaPath @{schemaVersion=1;sessionId=$SessionId;startedUtc=[datetime]::UtcNow.ToString('o');version=$version;status='active'} }
-        else { $meta=Read-ZapretLogJson $metaPath; $meta.status='active'; Write-ZapretLogJson $metaPath $meta }
+        else { $meta=Read-ZapretLogJson $metaPath; if ($meta.status -ne 'active') { $meta.status='active'; Write-ZapretLogJson $metaPath $meta } }
         if (-not $OwnerProcessId) { $OwnerProcessId=$PID }
         $owner=Get-Process -Id $OwnerProcessId -ErrorAction Stop
         $ctx.Lease=Assert-ZapretLogPath $Root (Join-Path $ctx.State ([guid]::NewGuid().ToString('N')+'.json'))
         Write-ZapretLogJson $ctx.Lease @{processId=$OwnerProcessId;startedTicks=$owner.StartTime.ToUniversalTime().Ticks;operationId=$ctx.OperationId;component=$Component;action=$Action}
         $env:ZAPRET_LOG_ROOT=$Root; $env:ZAPRET_LOG_SESSION=$SessionId
         if ($Component -eq 'menu' -and $Action -eq 'Start' -and $isNew) { Close-ZapretPreviousMenuLocked $Root $SessionId $OwnerProcessId }
-        Update-ZapretLogRetentionLocked $Root
+        # Every fresh process audits stale leases. A persistent host can reuse
+        # that audit until a session boundary, recovery or export needs it again.
+        if ($isNew -or $script:ZapretLogMaintainedRoot -ne $Root -or $Action -in @('Start','Apply','Recover','Export')) {
+            Update-ZapretLogRetentionLocked $Root
+            $script:ZapretLogMaintainedRoot=$Root
+        }
         Exit-ZapretLogGate $gate; $gate=$null
         $engineVersion=''
         try { $engineLine=[IO.File]::ReadAllLines((Join-Path $Root 'ENGINE_VERSION')) | Select-Object -First 1; if ($engineLine -match '^zapret2_version=(\d+(?:\.\d+)+)$') { $engineVersion=$matches[1] } } catch {}
@@ -357,7 +396,7 @@ function Complete-ZapretLogOperation {
         }
     } catch {}
 }
-function Close-ZapretLogMenu([switch]$Handoff) {
+function Close-ZapretLogMenu([switch]$Handoff, [int]$OwnerProcessId=0, [int]$ExitCode=0) {
     if (-not $script:ZapretLog) { return }
     $gate=$null
     try {

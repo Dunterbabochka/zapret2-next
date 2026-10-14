@@ -32,8 +32,11 @@ $adapter=$adapter.Replace('LABPATH',$escapedLab)
 foreach ($root in @($install,$package)) {
     $path=Join-Path $root 'utils\update-release.ps1'
     $text=[IO.File]::ReadAllText($path)
-    $needle=". (Join-Path `$PSScriptRoot 'update-release-state.ps1')"
-    [IO.File]::WriteAllText($path,$text.Replace($needle,$needle+$adapter),[Text.UTF8Encoding]::new($true))
+    # Check no longer loads Windows transaction state. Override HTTP after
+    # action-specific imports, where every network action can see the adapter.
+    $needle='Initialize-ZapretLog -Root'
+    if (-not $text.Contains($needle)) { throw 'Update lab HTTP insertion point is missing.' }
+    [IO.File]::WriteAllText($path,$text.Replace($needle,$adapter+"`r`n"+$needle),[Text.UTF8Encoding]::new($true))
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($package,(Join-Path $lab 'valid.zip'),[IO.Compression.CompressionLevel]::Fastest,$true)

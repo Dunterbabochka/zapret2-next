@@ -83,8 +83,7 @@ function New-ZapretServiceCandidate {
     $renderer = Join-Path $Root 'utils\render-config.ps1'
     $dry = $Candidate + '.dry.txt'
     try {
-        & $renderer -Preset $Preset -Output $Candidate -IPSetMode $IPSetMode | Out-Null
-        & $renderer -Preset $Preset -Output $dry -IPSetMode $IPSetMode -DryRun | Out-Null
+        & $renderer -Preset $Preset -Output $Candidate -ValidationOutput $dry -IPSetMode $IPSetMode | Out-Null
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'utils\invoke-winws.ps1') -Config $dry -LogPrefix (Join-Path $Root 'runtime\service-validate') -Validate
         if ($LASTEXITCODE -ne 0) { throw 'The engine rejected the new service config. See runtime\service-validate.*.log.' }
     } finally {

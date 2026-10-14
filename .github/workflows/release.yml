@@ -43,6 +43,9 @@ jobs:
       - name: Validate release updates using local HTTP and crash fixtures
         shell: powershell
         run: ./utils/validate-release-update.ps1 -RequireNativeEngine
+      - name: Validate persistent menu and paired rendering
+        shell: powershell
+        run: ./utils/validate-startup.ps1
       - name: Detect release channel
         id: release_meta
         shell: pwsh

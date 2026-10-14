@@ -135,6 +135,23 @@ def main():
                          f":{label}\necho TEST-ACTION-{result}\nexit /b {result}\n\n", service)
     service = service.replace('-Action Export\n', '-Action Export -NoReveal\n')
     (fixture / "service.bat").write_bytes(service.replace("\n", "\r\n").encode("utf-8"))
+    menu_path = fixture / "utils/menu.ps1"
+    menu = menu_path.read_text(encoding="utf-8-sig")
+    boundaries = """
+function Test-ZapretMenuAdministrator { return $true }
+function Get-ZapretMenuService { [pscustomobject]@{State='Stopped';Preset='general'} }
+function Get-ZapretMenuTelegram { return 'DISABLED' }
+function Invoke-ZapretMenuAction([int]$Selection) {
+    if ($Selection -eq 13) { Show-ZapretDiagnosticsMenu; return }
+    Write-Host ('TEST-ACTION-'+$Selection)
+    $script:testResult=$Selection
+    $script:menuExit=$true
+}
+"""
+    menu = menu.replace("# Menu entry point.", boundaries + "\n# Menu entry point.")
+    menu = menu.replace("exit $exitCode", "exit $(if ($null -ne $script:testResult) {$script:testResult} else {$exitCode})")
+    menu = menu.replace("Start-Process explorer.exe -ArgumentList ('/select,\"'+$zip+'\"') | Out-Null", "# No Explorer in the isolated fixture.")
+    menu_path.write_text(menu, encoding="utf-8-sig")
     script_path = fixture / "utils" / "update-release.ps1"
     script = script_path.read_text(encoding="utf-8-sig")
     insertion = ". (Join-Path $PSScriptRoot 'update-release-state.ps1')"
@@ -145,7 +162,7 @@ function Get-ReleaseHttpTarget([string]$Url) {
     [pscustomobject]@{Url=('http://127.0.0.1:PORT'+$path);Protocol='http'}
 }
 """.replace("PORT", args.port)
-    script_path.write_text(script.replace(insertion, insertion + boundary), encoding="utf-8-sig")
+    script_path.write_text(script.replace("Initialize-ZapretLog -Root", boundary + "\nInitialize-ZapretLog -Root", 1), encoding="utf-8-sig")
     scenario = args.root / "scenario.json"
     scenario.write_text(json.dumps({"mode": "ok", "delay": 10}), encoding="utf-8")
     enabled = fixture / "utils" / "check_updates.enabled"
@@ -270,15 +287,16 @@ function Get-ReleaseHttpTarget([string]$Url) {
     with zipfile.ZipFile(newest) as archive:
         assert set(archive.namelist()) == {"LOGS.txt", "events.jsonl", "manifest.json"}
     print("[OK] shared menu/check session, normal exit journal and logs-only export")
-    saved_script = script_path.read_bytes()
-    script_path.write_text("throw 'Injected input helper failure'", encoding="utf-8-sig")
+    input_path = fixture / "utils/menu-input.ps1"
+    saved_script = input_path.read_bytes()
+    input_path.write_text("function Read-ReleaseMenuChoice { throw 'Injected input helper failure' }", encoding="utf-8-sig")
     console = Console(command)
     try:
         console.wait_text("Could not read the menu selection.")
         assert "TEST-ACTION-1" not in console.text(), "Helper error dispatched Install Service"
     finally:
         console.close()
-        script_path.write_bytes(saved_script)
+        input_path.write_bytes(saved_script)
     print("[OK] ordinary menu actions, disabled auto-check and redirected cmd.exe input")
 
 

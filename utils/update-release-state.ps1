@@ -252,7 +252,7 @@ function Invoke-ReleasePrepare([string]$Root) {
         }
         $worker = Join-Path $directory 'recovery'
         New-Item -ItemType Directory -Path $worker -Force | Out-Null
-        foreach ($file in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1','session-log.ps1','manage-logs.ps1','service-control.ps1','ipset-utils.ps1','telegram-control.ps1')) {
+        foreach ($file in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1','session-log.ps1','manage-logs.ps1','service-control.ps1','ipset-utils.ps1','telegram-control.ps1','release-info.ps1','menu-input.ps1','menu-settings.ps1')) {
             Copy-Item -LiteralPath (Join-Path $Root ('utils\' + $file)) -Destination $worker -Force
         }
         $transaction = [pscustomobject]@{Schema=1;Root=$Root;Session=$sessionName;Status='prepared';Offer=$check.Offer

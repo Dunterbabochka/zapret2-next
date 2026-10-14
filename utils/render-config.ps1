@@ -25,7 +25,9 @@
 
     [switch]$InterceptOff,
 
-    [switch]$DryRun
+    [switch]$DryRun,
+
+    [string]$ValidationOutput
 )
 
 . (Join-Path $PSScriptRoot 'session-log.ps1')
@@ -236,8 +238,16 @@ $voiceUdpProfile = switch ($voiceMode) {
 $content = $content.Replace('{{VOICE_UDP_PROFILE}}', $voiceUdpProfile)
 
 $loadedIPSetPath = Join-Path $root 'lists\ipset-all.txt'
-$loadedIPSetHasEntries = (Test-Path -LiteralPath $loadedIPSetPath -PathType Leaf) -and
-    @((Get-Content -LiteralPath $loadedIPSetPath) | Where-Object { $_ -notmatch '^\s*(?:#|$)' }).Count -gt 0
+$loadedIPSetHasEntries = $false
+if ($ipsetMode -eq 'loaded' -and [IO.File]::Exists($loadedIPSetPath)) {
+    # Match Get-Content's BOM detection/ANSI fallback on Windows PowerShell 5.1.
+    $reader = [IO.StreamReader]::new($loadedIPSetPath, [Text.Encoding]::Default, $true)
+    try {
+        while ($null -ne ($line = $reader.ReadLine())) {
+            if ($line -notmatch '^\s*(?:#|$)') { $loadedIPSetHasEntries=$true; break }
+        }
+    } finally { $reader.Dispose() }
+}
 $loadedIPSetSource = if ($loadedIPSetHasEntries) { '../lists/ipset-all.txt' } else { '../lists/ipset-none.txt' }
 $ipsetInclude = switch ($ipsetMode) {
     'loaded' { "--ipset=$loadedIPSetSource" }
@@ -304,11 +314,20 @@ if ($DryRun) {
 }
 
 $outputPath = [IO.Path]::GetFullPath($Output)
+if ($ValidationOutput) {
+    if ($DryRun) { throw 'ValidationOutput requires a normal configuration.' }
+    $validationPath=[IO.Path]::GetFullPath($ValidationOutput)
+    if ($validationPath -eq $outputPath) { throw 'Validation output must differ from output.' }
+}
 $outputDir = Split-Path -Parent $outputPath
 if (-not (Test-Path -LiteralPath $outputDir)) {
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 }
 [IO.File]::WriteAllText($outputPath, $content.Trim() + "`r`n", [Text.UTF8Encoding]::new($false))
+if ($ValidationOutput) {
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($validationPath)) | Out-Null
+    [IO.File]::WriteAllText($validationPath, ($content + "`r`n--wf-dup-check=0`r`n`r`n--dry-run`r`n").Trim() + "`r`n", [Text.UTF8Encoding]::new($false))
+}
 Write-ZapretLogEvent -Stage settings -Details @{preset=$Preset;game=$GameMode;ipset=$IPSetMode;voice=$VoiceMode;discordFake=$DiscordFake;gameFake=$GameFake}
 Write-Output $outputPath
 } finally { Exit-ZapretBundleOperation $bundleGate }

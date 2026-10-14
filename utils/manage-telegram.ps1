@@ -20,9 +20,9 @@ function Invoke-TelegramManagerAction([string]$Selection) {
         'Restart' { Restart-ZapretTelegram $root }
         'Connect' { Connect-ZapretTelegram $root }
         'Status' {
-            if ($Compact) { Get-ZapretTelegramStatus $root -Compact }
+            if ($Compact) { Get-ZapretTelegramStatus $root -Compact -Fast }
             else {
-                Get-ZapretTelegramStatus $root | Format-List | Out-Host
+                Get-ZapretTelegramStatus $root -Fast | Format-List | Out-Host
                 try {
                     $service=Get-CimInstance Win32_Service -Filter "Name='winws2'" -ErrorAction Stop
                     $state=if (-not $service) {'absent'} elseif ($service.State -eq 'Running') {'running'} else {'stopped'}
@@ -40,7 +40,7 @@ try {
         do {
             Clear-Host
             Write-Host 'Telegram Desktop proxy' -ForegroundColor Cyan
-            Write-Host ('Status: ' + (Get-ZapretTelegramStatus $root -Compact))
+            Write-Host ('Status: ' + (Get-ZapretTelegramStatus $root -Compact -Fast))
             Write-Host ''
             Write-Host '  1. Enable and connect Telegram'
             Write-Host '  2. Connect Telegram'
