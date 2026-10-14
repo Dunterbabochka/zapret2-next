@@ -1,8 +1,12 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$Output,
     [string]$RemoteUrl
 )
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component hosts -Action 'Prepare'
+try {
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -40,7 +44,7 @@ if ($RemoteUrl) {
     try {
         Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 -Uri $RemoteUrl -OutFile $remoteTemp
         Add-HostsLines -Lines @(Get-Content -LiteralPath $remoteTemp)
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         Write-Host "[WARN] Remote hosts suggestions are unavailable: $($_.Exception.Message)" -ForegroundColor Yellow
     } finally {
         Remove-Item -LiteralPath $remoteTemp -Force -ErrorAction SilentlyContinue
@@ -81,14 +85,14 @@ foreach ($domain in $domains) {
             $mapping = "$address $domain"
             if ($seen.Add($mapping)) { $mappings.Add($mapping) }
         }
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         Write-Host "[WARN] DNS-over-HTTPS lookup failed for $domain" -ForegroundColor Yellow
     }
 }
 
 if ($mappings.Count -lt 5) {
     Write-Host '[ERROR] Too few valid hosts suggestions were produced.' -ForegroundColor Red
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 }
 
 $header = @(
@@ -100,4 +104,7 @@ $header = @(
 )
 [IO.File]::WriteAllLines($outputPath, @($header + $mappings), [Text.Encoding]::ASCII)
 Write-Host "[OK] Prepared $($mappings.Count) hosts suggestions: $outputPath" -ForegroundColor Green
-exit 0
+Complete-ZapretLogOperation -ExitCode 0; exit 0
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

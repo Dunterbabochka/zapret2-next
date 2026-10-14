@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory)]
     [ValidatePattern('^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')]
     [string]$Version,
@@ -106,6 +106,7 @@ foreach ($sourceOnlyPath in @(
     'utils\sync-upstream-ipset.ps1',
     'utils\test-custom-presets.ps1',
     'utils\validate-release-update.ps1',
+    'utils\validate-session-log.ps1',
     'lists\ipset-all.txt.backup'
 )) {
     Remove-Item (Join-Path $stage $sourceOnlyPath) -Force -ErrorAction SilentlyContinue
@@ -125,7 +126,7 @@ foreach ($entry in $releaseModes.GetEnumerator()) {
 # Fresh installations check releases by default. Updates preserve the user's
 # enabled/disabled marker independently of the packaged default.
 [IO.File]::WriteAllText((Join-Path $stage 'utils\check_updates.enabled'), "enabled`r`n", [Text.Encoding]::ASCII)
-foreach ($updater in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1')) {
+foreach ($updater in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1','session-log.ps1','manage-logs.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $stage ('utils\'+$updater)) -PathType Leaf)) { throw "Missing release update component: $updater" }
 }
 foreach ($experimentalPreset in @(

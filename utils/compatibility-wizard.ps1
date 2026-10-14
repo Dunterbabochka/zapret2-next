@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateRange(3, 30)]
     [int]$TimeoutSeconds = 8,
@@ -10,6 +10,10 @@ param(
 
     [switch]$SelfTest
 )
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component wizard -Action 'Scan'
+try {
 
 $coreParameters = @{ TimeoutSeconds = $TimeoutSeconds; ValidateContract = $ValidateContract }
 . (Join-Path $PSScriptRoot 'compatibility-wizard-core.ps1') @coreParameters
@@ -38,7 +42,10 @@ try {
     . (Join-Path $PSScriptRoot 'bundle-operation.ps1')
     $bundleGate = Enter-ZapretBundleOperation $root
     Invoke-CompatibilityWizard
-} catch [OperationCanceledException] {
+} catch [OperationCanceledException] { Write-ZapretLogException $_ -Warning;
     Write-Host "Canceled by user: $($_.Exception.Message)" -ForegroundColor Yellow
-    exit 2
+    Complete-ZapretLogOperation -ExitCode 2; exit 2
 } finally { Exit-ZapretBundleOperation $bundleGate }
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

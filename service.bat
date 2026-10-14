@@ -3,6 +3,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 set "SERVICE_NAME=winws2"
 set "TELEGRAM_STATUS="
 set "ROOT=%~dp0"
+if /I "%~1"=="log_session" set "ZAPRET_LOG_SESSION=%~2"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "VERSION=unknown"
 if exist "%ROOT%\.service\version.txt" set /p VERSION=<"%ROOT%\.service\version.txt"
@@ -21,11 +22,19 @@ if /I "%~1"=="check_updates" (
   exit /b
 )
 
+set "ZAPRET_LOG_ROOT=%ROOT%"
+set "LOG_SESSION_RESULT=disabled"
+for /f "delims=" %%L in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-logs.ps1" -Action Start -SessionId "%ZAPRET_LOG_SESSION%"') do set "LOG_SESSION_RESULT=%%L"
+set "ZAPRET_LOG_SESSION=%LOG_SESSION_RESULT%"
+if "%ZAPRET_LOG_SESSION%"=="disabled" set "ZAPRET_LOG_DISABLED=1"
+
 fltmc >nul 2>&1
 if errorlevel 1 (
   echo Requesting administrator rights...
-  powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c ""%~f0""' -Verb RunAs"
-  exit /b
+  powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c ""%~f0"" log_session %ZAPRET_LOG_SESSION%' -Verb RunAs"
+  set "ELEVATION_EXIT=!errorlevel!"
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-logs.ps1" -Action Finish -Handoff -ExitCode !ELEVATION_EXIT!
+  exit /b !ELEVATION_EXIT!
 )
 
 mode con: cols=110 lines=40 >nul 2>&1
@@ -110,7 +119,10 @@ if "!choice!"=="12" goto manual_update_check
 if "!choice!"=="13" goto diagnostics
 if "!choice!"=="14" goto tests
 if "!choice!"=="15" goto clear_discord_cache
-if "!choice!"=="0" exit /b 0
+if "!choice!"=="0" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-logs.ps1" -Action Finish
+  exit /b 0
+)
 goto menu
 
 :read_status
@@ -491,9 +503,10 @@ echo   1. Quick check
 echo   2. Create support report (automatic)
 echo   3. Compatibility Wizard (advanced)
 echo   4. Discord Voice diagnostic (advanced)
+echo   5. Create logs archive
 echo   0. Back
 set "diagnostic_choice="
-set /p "diagnostic_choice=Select option (0-4): "
+set /p "diagnostic_choice=Select option (0-5): "
 if "!diagnostic_choice!"=="0" goto menu
 if "!diagnostic_choice!"=="1" goto quick_diagnostics
 if "!diagnostic_choice!"=="2" (
@@ -507,6 +520,11 @@ if "!diagnostic_choice!"=="3" (
 )
 if "!diagnostic_choice!"=="4" (
   call "%ROOT%\utils\diagnose discord voice.bat"
+  goto diagnostics
+)
+if "!diagnostic_choice!"=="5" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\manage-logs.ps1" -Action Export
+  pause
   goto diagnostics
 )
 goto diagnostics

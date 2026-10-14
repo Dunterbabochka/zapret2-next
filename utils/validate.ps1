@@ -1,4 +1,8 @@
-param([switch]$Quick)
+﻿param([switch]$Quick)
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component diagnostics -Action Validate
+try {
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -10,6 +14,7 @@ $warnings = [Collections.Generic.List[string]]::new()
 
 function Add-ValidationError([string]$Message) {
     $script:errors.Add($Message)
+    Write-ZapretLogEvent -Stage validate -Result error -Code NativeFailed
     Write-Host "[ERROR] $Message" -ForegroundColor Red
 }
 
@@ -906,9 +911,12 @@ foreach ($hit in $forbidden) {
 
 if ($errors.Count -gt 0) {
     Write-Host "Validation failed with $($errors.Count) error(s)." -ForegroundColor Red
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 }
 Write-Host "Validation passed: $($presets.Count) presets, $renderCount configurations (Game: $($gameModes -join ', '); IPSet: $($ipsetModes -join ', '); Voice: $($voiceModes -join ', '))." -ForegroundColor Green
 Write-Host "UDP fake selector combinations inspected: $fakeRenderCount." -ForegroundColor Green
 Write-Host ('NEXT static candidates inspected: ' + $customStaticCount) -ForegroundColor DarkGray
-exit 0
+Complete-ZapretLogOperation -ExitCode 0; exit 0
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidatePattern('^[A-Za-z0-9 _-]+$')]
     [string]$Preset = 'VOICE',
@@ -10,6 +10,10 @@ param(
 
     [switch]$AllowContaminatedNetwork
 )
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component voice -Action 'Diagnose'
+try {
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -71,7 +75,7 @@ function Get-NetworkContaminationReasons {
         if (-not [string]::IsNullOrWhiteSpace($inet.AutoConfigURL)) {
             [void]$reasons.Add('WinINET proxy auto-configuration URL is set')
         }
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         Write-Warning 'Could not read WinINET proxy state; this source was not used to mark contamination.'
     }
     try {
@@ -83,7 +87,7 @@ function Get-NetworkContaminationReasons {
         } else {
             Write-Warning 'Could not determine WinHTTP proxy state from localized netsh output; this source was not used to mark contamination.'
         }
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         Write-Warning 'Could not read WinHTTP proxy state; this source was not used to mark contamination.'
     }
     try {
@@ -95,7 +99,7 @@ function Get-NetworkContaminationReasons {
         })) {
             [void]$reasons.Add(('Suspicious active adapter: {0}' -f $adapter.Name))
         }
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         Write-Warning 'Could not inspect active adapters; adapter-based VPN/TUN detection was skipped.'
     }
     return @($reasons)
@@ -140,7 +144,7 @@ function Stop-OwnedResources {
                 Stop-Process -Id $script:winwsProcess.Id -Force
                 $script:winwsProcess.WaitForExit()
             }
-        } catch {}
+        } catch { Write-ZapretLogException $_ -Warning;}
     }
 }
 
@@ -394,14 +398,17 @@ try {
     }
     Write-Host "Attach this ZIP: $zipPath" -ForegroundColor Cyan
     Write-Host 'The diagnostic winws2 instance has been stopped.' -ForegroundColor Yellow
-    if ($twoWayAudioConfirmed) { exit 0 } else { exit 2 }
-} catch {
+    if ($twoWayAudioConfirmed) { Complete-ZapretLogOperation -ExitCode 0; exit 0 } else { Complete-ZapretLogOperation -ExitCode 2; exit 2 }
+} catch { Write-ZapretLogException $_ -Warning;
     Write-Host ''
     Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
     if (Test-Path -LiteralPath $resultDir) {
         Write-Host "Partial logs: $resultDir" -ForegroundColor DarkYellow
     }
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 } finally {
     Stop-OwnedResources
 }
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

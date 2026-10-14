@@ -5,6 +5,10 @@ param(
     [ValidateRange(3, 30)][int]$TimeoutSeconds = 8
 )
 
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component support -Action 'Scan'
+try {
+
 . (Join-Path $PSScriptRoot 'compatibility-wizard-core.ps1') -TimeoutSeconds $TimeoutSeconds
 . (Join-Path $PSScriptRoot 'compatibility-wizard-preflight.ps1')
 . (Join-Path $PSScriptRoot 'compatibility-wizard-network.ps1')
@@ -31,11 +35,15 @@ try {
     Write-Host "ZIP для обращения: $($artifact.ZipPath)" -ForegroundColor Cyan
     Write-Host 'Приложите этот ZIP к GitHub Issue. Он не отправляется автоматически.'
     Write-Host 'https://github.com/Dunterbabochka/zapret2-next/issues/new?template=strategy-report.yml'
+    Complete-ZapretLogOperation -ExitCode $artifact.ExitCode
     exit $artifact.ExitCode
-} catch [OperationCanceledException] {
+} catch [OperationCanceledException] { Write-ZapretLogException $_ -Warning;
     Write-Host 'Проверка отменена.' -ForegroundColor Yellow
-    exit 2
-} catch {
+    Complete-ZapretLogOperation -ExitCode 2; exit 2
+} catch { Write-ZapretLogException $_ -Warning;
     Write-Host 'Не удалось сохранить отчёт. Проверьте доступ к папке runtime/support-reports и свободное место.' -ForegroundColor Red
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 } finally { Exit-ZapretBundleOperation $bundleGate }
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

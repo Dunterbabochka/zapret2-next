@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string[]]$Preset,
     [ValidateSet('standard', 'dpi', 'both')]
     [string]$Suite = 'standard',
@@ -9,6 +9,10 @@ param(
     [switch]$NonInteractive
 )
 
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component tests -Action 'Scan'
+try {
+
 $suiteWasSpecified = $PSBoundParameters.ContainsKey('Suite')
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -18,7 +22,7 @@ $winws = Join-Path $root 'bin\winws2.exe'
 $resultsDir = Join-Path $root 'runtime\test-results'
 New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 
-try { $Host.UI.RawUI.WindowTitle = 'Zapret 2 NEXT - Preset tests' } catch {}
+try { $Host.UI.RawUI.WindowTitle = 'Zapret 2 NEXT - Preset tests' } catch { Write-ZapretLogException $_ -Warning;}
 if (-not $NonInteractive) { Clear-Host }
 Write-Host 'Zapret 2 NEXT test environment' -ForegroundColor Cyan
 Write-Host '----------------------------------------' -ForegroundColor DarkCyan
@@ -26,17 +30,17 @@ Write-Host '----------------------------------------' -ForegroundColor DarkCyan
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host '[ERROR] Run tests as Administrator.' -ForegroundColor Red
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 }
 Write-Host '[OK] Administrator rights' -ForegroundColor Green
 if (-not (Test-Path $winws)) {
     Write-Host "[ERROR] winws2.exe not found: $winws" -ForegroundColor Red
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 }
 Write-Host '[OK] winws2.exe' -ForegroundColor Green
 if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
     Write-Host '[ERROR] curl.exe is required.' -ForegroundColor Red
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 }
 Write-Host '[OK] curl.exe' -ForegroundColor Green
 
@@ -106,7 +110,7 @@ function Invoke-WebChecks {
                     $pingStatus = $reply.Status.ToString()
                     $pingSuccess = $false
                 }
-            } catch {
+            } catch { Write-ZapretLogException $_ -Warning;
                 $pingStatus = 'Timeout'
                 $pingSuccess = $false
             } finally {
@@ -142,7 +146,7 @@ function Invoke-WebChecks {
             try {
                 $result = @($job.PowerShell.EndInvoke($job.Handle)) | Select-Object -First 1
                 if ($result) { $results += $result }
-            } catch {
+            } catch { Write-ZapretLogException $_ -Warning;
                 $results += [pscustomobject]@{
                     Name = $job.Name
                     Url = $null
@@ -222,7 +226,7 @@ function Get-DpiTargets {
                 Category = 'dpi'
             }
         })
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         Write-Host '[WARN] DPI checker suite is unavailable; skipping it.' -ForegroundColor Yellow
         return @()
     }
@@ -302,7 +306,7 @@ $savedProcesses = @()
 try {
     $savedProcesses = @(Get-CimInstance Win32_Process -Filter "Name='winws2.exe'" -ErrorAction SilentlyContinue |
         Select-Object ExecutablePath, CommandLine)
-} catch {}
+} catch { Write-ZapretLogException $_ -Warning;}
 
 $all = @()
 $presetNumber = 0
@@ -360,7 +364,7 @@ try {
             if (-not $saved.ExecutablePath -or -not $saved.CommandLine) { continue }
             $args = $saved.CommandLine
             if ($args.StartsWith('"' + $saved.ExecutablePath + '"')) { $args = $args.Substring($saved.ExecutablePath.Length + 2).Trim() }
-            try { Start-Process -FilePath $saved.ExecutablePath -ArgumentList $args -WorkingDirectory (Split-Path $saved.ExecutablePath) -WindowStyle Hidden | Out-Null } catch {}
+            try { Start-Process -FilePath $saved.ExecutablePath -ArgumentList $args -WorkingDirectory (Split-Path $saved.ExecutablePath) -WindowStyle Hidden | Out-Null } catch { Write-ZapretLogException $_ -Warning;}
         }
     }
 }
@@ -398,4 +402,8 @@ if (-not $NonInteractive) {
     Write-Host 'Press any key to close...' -ForegroundColor Yellow
     [void][Console]::ReadKey($true)
 }
+Complete-ZapretLogOperation -ExitCode $exitCode
 exit $exitCode
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

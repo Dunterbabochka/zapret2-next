@@ -1,8 +1,12 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$Force,
     [switch]$ListOnly
 )
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component cache -Action 'Clear'
+try {
 
 $ErrorActionPreference = 'Stop'
 $appData = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
@@ -40,14 +44,14 @@ foreach ($channel in $channels) {
 
 if ($targets.Count -eq 0) {
     Write-Host '[INFO] No Discord Cache, Code Cache or GPUCache directories were found.' -ForegroundColor Yellow
-    exit 0
+    Complete-ZapretLogOperation -ExitCode 0; exit 0
 }
 
 Write-Host 'The following Discord cache directories will be removed:' -ForegroundColor Yellow
 foreach ($target in $targets) { Write-Host ('  {0}: {1}' -f $target.Channel, $target.Path) }
 if ($ListOnly) {
     Write-Host '[INFO] List-only mode: no process was closed and no directory was removed.' -ForegroundColor Cyan
-    exit 0
+    Complete-ZapretLogOperation -ExitCode 0; exit 0
 }
 Write-Host 'Discord processes for the affected channels will be closed first.' -ForegroundColor Yellow
 
@@ -55,7 +59,7 @@ if (-not $Force) {
     $answer = (Read-Host 'Continue? [y/N]').Trim()
     if ($answer -notin @('y', 'yes')) {
         Write-Host '[INFO] Discord cache cleanup cancelled.' -ForegroundColor Yellow
-        exit 0
+        Complete-ZapretLogOperation -Result canceled -ExitCode 0; exit 0
     }
 }
 
@@ -65,7 +69,7 @@ foreach ($processName in @($targets | Select-Object -ExpandProperty Process -Uni
         try {
             Stop-Process -Id $process.Id -Force -ErrorAction Stop
             Write-Host "[OK] Closed $processName (PID $($process.Id))." -ForegroundColor Green
-        } catch {
+        } catch { Write-ZapretLogException $_ -Warning;
             $failures.Add("Could not close $processName PID $($process.Id): $($_.Exception.Message)")
         }
     }
@@ -75,15 +79,18 @@ foreach ($target in $targets) {
     try {
         Remove-Item -LiteralPath $target.Path -Recurse -Force -ErrorAction Stop
         Write-Host "[OK] Removed $($target.Path)" -ForegroundColor Green
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         $failures.Add("Could not remove $($target.Path): $($_.Exception.Message)")
     }
 }
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host "[ERROR] $failure" -ForegroundColor Red }
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 }
 
 Write-Host '[OK] Discord cache cleanup completed. Discord will recreate these directories on launch.' -ForegroundColor Green
-exit 0
+Complete-ZapretLogOperation -ExitCode 0; exit 0
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

@@ -1,8 +1,12 @@
-param(
+﻿param(
     [string]$RemoteUrl,
     [string]$Destination,
     [string]$SourcePath
 )
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component ipset -Action 'Update'
+try {
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'ipset-utils.ps1')
@@ -27,7 +31,7 @@ try {
         try {
             Invoke-WebRequest -UseBasicParsing -TimeoutSec 20 -Uri $RemoteUrl -OutFile $temporaryPath
             $sourceLabel = 'remote repository'
-        } catch {
+        } catch { Write-ZapretLogException $_ -Warning;
             # A timed-out request can leave a partial file behind.
             Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
             Write-Host "[WARN] Remote IPSet is unavailable: $($_.Exception.Message)" -ForegroundColor Yellow
@@ -50,14 +54,18 @@ try {
     $removedCount = @($currentEntries | Where-Object { -not $candidateSet.Contains($_) }).Count
     Write-Host "[INFO] IPSet candidate diff: +$addedCount / -$removedCount." -ForegroundColor Cyan
     Write-AtomicTextFile -Path $destinationPath -Content (($candidateEntries -join "`r`n") + "`r`n") -BackupPath ($destinationPath + '.backup')
+    Write-ZapretLogEvent -Details @{count=$candidateEntries.Count}
     Write-Host "[OK] IPSet updated atomically from $sourceLabel ($($candidateEntries.Count) entries)." -ForegroundColor Green
-} catch {
+} catch { Write-ZapretLogException $_ -Warning;
     Write-Host "[ERROR] IPSet update failed: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host 'The current list was preserved.' -ForegroundColor Yellow
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 } finally {
     Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
     if ($lock) { $lock.Dispose() }
     Exit-ZapretBundleOperation $bundleGate
 }
-exit 0
+Complete-ZapretLogOperation -ExitCode 0; exit 0
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

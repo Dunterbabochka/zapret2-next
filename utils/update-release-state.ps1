@@ -226,8 +226,10 @@ function Invoke-ReleasePrepare([string]$Root) {
         if ($sumLines.Count -ne 1 -or (Get-Item -LiteralPath $archive).Length -ne $check.Offer.Size -or
             (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine ($sumLines[0] -split '\s+',2)[0]) { throw 'Downloaded release ZIP failed its SHA256/size check.' }
         Write-Host 'Проверка и распаковка архива...' -ForegroundColor Cyan
+        Write-ZapretLogEvent -Component update -Stage extract -Result started
         $stage = Expand-ReleasePackage $archive (Join-Path $session 'unpacked') $check.Offer.Version
         Assert-ReleasePackage $stage $check.Offer
+        Write-ZapretLogEvent -Component update -Stage validate -Details @{toVersion=$check.Offer.Version}
         $gate = Enter-ZapretBundleOperation $Root
         $windows = Get-ReleaseWindowsState $Root
         $settings = @(Get-ReleaseSettings $Root)
@@ -250,11 +252,15 @@ function Invoke-ReleasePrepare([string]$Root) {
         }
         $worker = Join-Path $directory 'recovery'
         New-Item -ItemType Directory -Path $worker -Force | Out-Null
-        foreach ($file in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1','service-control.ps1','ipset-utils.ps1','telegram-control.ps1')) {
+        foreach ($file in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1','session-log.ps1','manage-logs.ps1','service-control.ps1','ipset-utils.ps1','telegram-control.ps1')) {
             Copy-Item -LiteralPath (Join-Path $Root ('utils\' + $file)) -Destination $worker -Force
         }
         $transaction = [pscustomobject]@{Schema=1;Root=$Root;Session=$sessionName;Status='prepared';Offer=$check.Offer
             Fingerprint=$fingerprint;Windows=$windows;Settings=$settings;Items=@($items);ProcessesTouched=$false;ConfigsTouched=$false;CleanupPending=$false;Error=''}
+        if ($script:ZapretLog) {
+            $transaction | Add-Member -NotePropertyName LogSessionId -NotePropertyValue $script:ZapretLog.Id
+            $transaction | Add-Member -NotePropertyName LogOperationId -NotePropertyValue $script:ZapretLog.OperationId
+        }
         Save-ReleaseTransaction $Root $transaction
         $preparedRecorded = $true
         return $transaction
@@ -295,11 +301,13 @@ function Restore-ReleaseFiles([string]$Root, $Transaction) {
     }
 }
 function Invoke-ReleaseRollback([string]$Root, $Transaction) {
+    Write-ZapretLogEvent -Component update -Action Rollback -Stage rollback -Result started
     $Transaction.Status = 'rolling-back'
     Save-ReleaseTransaction $Root $Transaction
     if ($Transaction.ProcessesTouched) { Stop-ReleaseInstalledProcesses $Root $Transaction.Windows }
     Restore-ReleaseFiles $Root $Transaction
     if ($Transaction.ProcessesTouched) { Start-ReleaseWindowsState $Root $Transaction.Windows }
+    Write-ZapretLogEvent -Component update -Action Rollback -Stage end -Details @{statePreserved=$true;serviceRestored=$true}
     $Transaction.Status = 'rolled-back'
     $Transaction.CleanupPending = $false
     Save-ReleaseTransaction $Root $Transaction
@@ -315,8 +323,10 @@ function Clear-ReleaseBackup([string]$Root, $Transaction) {
             $path = Assert-ReleaseChildPath $session (Join-Path $session $name)
             if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) }
         }
+        Write-ZapretLogEvent -Component update -Action Cleanup -Stage cleanup
         $Transaction.CleanupPending = $false
     } catch {
+        Write-ZapretLogException $_ -Code CleanupPending -Warning
         $Transaction.CleanupPending = $true
         Write-Host 'Обновление установлено. Старые файлы пока заняты; очистка повторится при следующем запуске меню.' -ForegroundColor Yellow
     }
@@ -347,18 +357,22 @@ function Invoke-ReleaseApply([string]$Root) {
         Save-ReleaseTransaction $Root $transaction
         Write-Host 'Применение обновления: остановка процессов этой сборки...' -ForegroundColor Cyan
         Stop-ReleaseWindowsState $transaction.Windows
+        Write-ReleaseLogCheckpoint 'stopped'
         Invoke-ReleaseCheckpoint 'stopped'
         foreach ($item in $transaction.Items) {
             $item.Started = $true
             Save-ReleaseTransaction $Root $transaction
             $destination = Join-Path $Root $item.Relative
             if ($item.HadOriginal) { Move-ReleaseItem $destination (Join-Path $session ('backup\' + $item.Relative)) }
+            Write-ReleaseLogCheckpoint ('old:' + $item.Relative)
             Invoke-ReleaseCheckpoint ('old:' + $item.Relative)
             Move-ReleaseItem (Join-Path $stage $item.Relative) $destination
             $item.Installed = $true
             Save-ReleaseTransaction $Root $transaction
+            Write-ReleaseLogCheckpoint ('new:' + $item.Relative)
             Invoke-ReleaseCheckpoint ('new:' + $item.Relative)
         }
+        Write-ZapretLogEvent -Component update -Stage settings -Result started
         Write-Host 'Восстановление применённых настроек...' -ForegroundColor Cyan
         $transaction.ConfigsTouched = $true
         Save-ReleaseTransaction $Root $transaction
@@ -370,6 +384,7 @@ function Invoke-ReleaseApply([string]$Root) {
         # Existing launcher helpers take this lock themselves when restarting.
         foreach ($lock in $locks) { $lock.Dispose() }; $locks=@()
         Start-ReleaseWindowsState $Root $transaction.Windows
+        Write-ReleaseLogCheckpoint 'started'
         Invoke-ReleaseCheckpoint 'started'
         [IO.File]::WriteAllText((Join-Path (Get-ReleaseUpdateDirectory $Root) 'cleanup-pending'), 'pending')
         $transaction.Status='committed'; $transaction.CleanupPending=$true
@@ -377,14 +392,16 @@ function Invoke-ReleaseApply([string]$Root) {
         [IO.File]::Delete((Join-Path (Get-ReleaseUpdateDirectory $Root) 'recovery-needed'))
         Clear-ReleaseBackup $Root $transaction
         Write-Host ('Обновление до ' + $transaction.Offer.Version + ' завершено. Настройки сохранены.') -ForegroundColor Green
+        Write-ZapretLogEvent -Component update -Action Apply -Stage end -Details @{toVersion=$transaction.Offer.Version;statePreserved=$true;serviceRestored=$true}
         return $transaction
     } catch {
+        Write-ZapretLogException $_ -Code UpdateFailed
         $failure = $_.Exception.Message
         foreach ($lock in $locks) { $lock.Dispose() }; $locks=@()
         if ($transaction -and $transaction.Status -eq 'applying') {
             $transaction.Error = $failure
             try { Invoke-ReleaseRollback $Root $transaction }
-            catch { $transaction.Status='rollback-failed';$transaction.Error=$_.Exception.Message;Save-ReleaseTransaction $Root $transaction;throw ("Update failed: $failure Recovery also failed: " + $_.Exception.Message) }
+            catch { Write-ZapretLogException $_ -Code RollbackFailed; $transaction.Status='rollback-failed';$transaction.Error=$_.Exception.Message;Save-ReleaseTransaction $Root $transaction;throw ("Update failed: $failure Recovery also failed: " + $_.Exception.Message) }
         }
         throw $failure
     } finally { foreach ($lock in $locks) { $lock.Dispose() }; Exit-ZapretBundleOperation $gate }
@@ -401,4 +418,10 @@ function Invoke-ReleaseRecover([string]$Root) {
         }
         if ($transaction.Status -in @('prepared','rolled-back')) { [IO.File]::Delete((Join-Path (Get-ReleaseUpdateDirectory $Root) 'recovery-needed')) }
     } finally { Exit-ZapretBundleOperation $gate }
+}
+
+function Write-ReleaseLogCheckpoint([string]$Name) {
+    $parts=$Name -split ':',2
+    $stage=switch ($parts[0]) { 'stopped' {'stop'} 'started' {'start'} default {'files'} }
+    Write-ZapretLogEvent -Component update -Action Checkpoint -Stage $stage -Details @{item=$(if ($parts.Count -gt 1) {$parts[1]} else {''});fileOperation=$(switch ($parts[0]) {'old' {'backup'} 'new' {'install'}})}
 }

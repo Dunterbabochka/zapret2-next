@@ -1,14 +1,19 @@
-param(
+﻿param(
     [Parameter(Mandatory)]
     [ValidateSet('Enable', 'Disable', 'Restart', 'Connect', 'Status', 'Diagnose', 'Menu')]
     [string]$Action,
     [switch]$Compact
 )
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component telegram -Action $Action
+try {
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'telegram-control.ps1')
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 
 function Invoke-TelegramManagerAction([string]$Selection) {
+    Write-ZapretLogEvent -Action $Selection -Stage begin -Result started
     switch ($Selection) {
         'Enable' { Enable-ZapretTelegram $root; Connect-ZapretTelegram $root }
         'Disable' { Disable-ZapretTelegram $root }
@@ -16,10 +21,18 @@ function Invoke-TelegramManagerAction([string]$Selection) {
         'Connect' { Connect-ZapretTelegram $root }
         'Status' {
             if ($Compact) { Get-ZapretTelegramStatus $root -Compact }
-            else { Get-ZapretTelegramStatus $root | Format-List | Out-Host }
+            else {
+                Get-ZapretTelegramStatus $root | Format-List | Out-Host
+                try {
+                    $service=Get-CimInstance Win32_Service -Filter "Name='winws2'" -ErrorAction Stop
+                    $state=if (-not $service) {'absent'} elseif ($service.State -eq 'Running') {'running'} else {'stopped'}
+                    Write-ZapretLogEvent -Component service -Action Status -Stage snapshot -Result $state -Code StateObserved
+                } catch { Write-ZapretLogException $_ -Warning }
+            }
         }
         'Diagnose' { Invoke-ZapretTelegramDiagnostics $root }
     }
+    Write-ZapretLogEvent -Action $Selection -Stage end
 }
 
 try {
@@ -42,14 +55,17 @@ try {
             $menuAction = switch ($selection) { '1' {'Enable'} '2' {'Connect'} '3' {'Restart'} '4' {'Disable'} '5' {'Status'} '6' {'Diagnose'} }
             if (-not $menuAction) { continue }
             try { Invoke-TelegramManagerAction $menuAction }
-            catch { Write-Host ("[ERROR] " + $_.Exception.Message) -ForegroundColor Red }
+            catch { Write-ZapretLogException $_ -Warning; Write-Host ("[ERROR] " + $_.Exception.Message) -ForegroundColor Red }
             Write-Host ''
             Read-Host 'Press Enter to continue' | Out-Null
         } while ($true)
     } else { Invoke-TelegramManagerAction $Action }
-} catch {
+} catch { Write-ZapretLogException $_ -Warning;
     if ($Compact -and $Action -eq 'Status') { Write-Output 'ERROR' }
     else { Write-Host ("[ERROR] " + $_.Exception.Message) -ForegroundColor Red }
-    exit 1
+    Complete-ZapretLogOperation -ExitCode 1; exit 1
 }
-exit 0
+Complete-ZapretLogOperation -ExitCode 0; exit 0
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

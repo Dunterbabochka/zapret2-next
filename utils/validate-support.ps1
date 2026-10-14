@@ -7,6 +7,7 @@ $bundleRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'compatibility-wizard-network.ps1')
 . (Join-Path $PSScriptRoot 'compatibility-wizard-main.ps1')
 . (Join-Path $PSScriptRoot 'support-diagnostics-core.ps1')
+$logExportImplementation=${function:Export-ZapretSessionLogs}
 $exportImplementation = ${function:Save-SupportArtifacts}
 $presetImplementation = ${function:Invoke-SupportPreset}
 $environmentImplementation = ${function:Get-SupportEnvironment}
@@ -81,6 +82,11 @@ function Invoke-SupportPreset {
     if ($script:scenario -eq 'scan-error') { throw $canary }
     Add-TestRows $Preset $IPSetMode
 }
+function Export-ZapretSessionLogs {
+    param($Root,$Directory)
+    if ($script:scenario -eq 'log-export-error') { throw 'Injected logs export failure' }
+    & $logExportImplementation -Root $Root -Directory $Directory
+}
 function Save-SupportArtifacts {
     param($RunDirectory)
     $script:events.Add('export')
@@ -91,7 +97,7 @@ function Read-TestZip([string]$Path) {
     $zip = [IO.Compression.ZipFile]::OpenRead($Path)
     try {
         $names = @($zip.Entries | ForEach-Object FullName | Sort-Object)
-        Assert-Support (($names -join ',') -eq 'REPORT.txt,results.json,web-results.csv') 'Unexpected support ZIP member'
+        Assert-Support (($names -join ',') -eq $(if ($script:scenario -eq 'log-export-error') {'REPORT.txt,results.json,web-results.csv'} else {'logs/events.jsonl,logs/LOGS.txt,logs/manifest.json,REPORT.txt,results.json,web-results.csv'})) 'Unexpected support ZIP member'
         $text = ''
         foreach ($entry in $zip.Entries) {
             $reader = [IO.StreamReader]::new($entry.Open())
@@ -102,7 +108,8 @@ function Read-TestZip([string]$Path) {
     return Get-Content -LiteralPath (Join-Path ([IO.Path]::ChangeExtension($Path, $null)) 'share\results.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 }
 
-foreach ($scenarioName in @('success','full-fail','timeout','mixed','warnings','foreign','proxy','stale-service','cancel','scan-cancel','preflight-error','stop-error','scan-error','restore-error','state-change','no-service','stopped-service','busy','export-error')) {
+foreach ($scenarioName in @('success','full-fail','timeout','mixed','warnings','foreign','proxy','stale-service','cancel','scan-cancel','preflight-error','stop-error','scan-error','restore-error','state-change','no-service','stopped-service','busy','export-error','log-export-error')) {
+    Initialize-ZapretLog -Root $root -Component support -Action Scan
     $script:scenario=$scenarioName; $script:events=[Collections.Generic.List[string]]::new(); $script:stateReads=0
     $busyLock=$null
     if ($scenarioName -eq 'busy') { $busyLock=[IO.File]::Open((Join-Path $root 'runtime\engine-operation.lock'), 'OpenOrCreate','ReadWrite','None') }
@@ -162,7 +169,8 @@ foreach ($scenarioName in @('success','full-fail','timeout','mixed','warnings','
         if ($scenarioName -eq 'timeout') { Assert-Support (@($doc.webResults | Where-Object errorCode -eq 'Timeout').Count -gt 0) 'Timeout classification lost' }
         if ($scenarioName -in @('cancel','scan-cancel')) { Assert-Support ($doc.status -eq 'canceled' -and $artifact.ExitCode -eq 2) 'Cancellation not reported' }
         Write-Host "[OK] support $scenarioName"
-    } finally { if ($busyLock) { $busyLock.Dispose() } }
+    } finally { if ($busyLock) { $busyLock.Dispose() }
+        Complete-ZapretLogOperation }
     $probeLock=[IO.File]::Open((Join-Path $root 'runtime\engine-operation.lock'), 'OpenOrCreate','ReadWrite','None')
     $probeLock.Dispose()
 }

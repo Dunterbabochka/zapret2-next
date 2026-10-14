@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 
@@ -128,10 +129,11 @@ def main():
     labels = {"install_service": 1, "remove_service": 2, "show_status": 3, "game_filter": 4,
               "ipset_filter": 5, "update_toggle": 6, "voice_filter": 7, "fake_profiles": 8,
               "telegram": 9, "update_ipset": 10, "update_hosts": 11, "manual_update_check": 12,
-              "diagnostics": 13, "tests": 14, "clear_discord_cache": 15, "update_release": 111}
+              "tests": 14, "clear_discord_cache": 15, "update_release": 111}
     for label, result in labels.items():
         service = re.sub(r"(?ms)^:" + label + r"\n.*?(?=^:[a-z_]+\n|\Z)",
                          f":{label}\necho TEST-ACTION-{result}\nexit /b {result}\n\n", service)
+    service = service.replace('-Action Export\n', '-Action Export -NoReveal\n')
     (fixture / "service.bat").write_bytes(service.replace("\n", "\r\n").encode("utf-8"))
     script_path = fixture / "utils" / "update-release.ps1"
     script = script_path.read_text(encoding="utf-8-sig")
@@ -167,6 +169,11 @@ function Get-ReleaseHttpTarget([string]$Url) {
         assert time.monotonic() < deadline, "Background timeout did not finish"
         time.sleep(0.05)
     assert json.loads(check.read_text(encoding="utf-8-sig"))["Status"] == "unavailable"
+    sessions = fixture / "runtime" / "logs" / "sessions"
+    assert len(list(sessions.iterdir())) == 1, "Background check created another management session"
+    first_events = [json.loads(line) for path in sessions.glob("*/events.jsonl") for line in path.read_text(encoding="utf-8").splitlines()]
+    assert not any(event["code"] == "OperationInterrupted" for event in first_events), "FOR /F bootstrap owner was mistaken for the menu owner"
+    assert any(event["action"] == "Finish" for event in first_events), "Normal menu exit was not journaled"
     check.unlink()
     scenario.write_text(json.dumps({"mode": "ok", "delay": 2}), encoding="utf-8")
     console = Console(command)
@@ -177,6 +184,10 @@ function Get-ReleaseHttpTarget([string]$Url) {
         console.type("11\r")
         assert console.process.wait(timeout=5) == 111, "Notification lost the first typed digit"
         assert "TEST-ACTION-111" in console.text()
+        events = [json.loads(line) for path in sessions.glob("*/events.jsonl") for line in path.read_text(encoding="utf-8").splitlines()]
+        selected = [event for event in events if event.get("details", {}).get("selection") == 111]
+        assert len(selected) == 1, "111 selection absent or duplicated in journal"
+        assert any(event["action"] == "HTTP" and event["sessionId"] == selected[0]["sessionId"] for event in events), "Menu and background check lost shared session"
         print("[OK] cmd.exe menu accepts input during a delayed check; notification preserves 111")
     finally:
         console.close()
@@ -194,11 +205,40 @@ function Get-ReleaseHttpTarget([string]$Url) {
         finally:
             console.close()
     assert (args.root / "requests.txt").read_text(encoding="utf-8") == requests, "Disabled auto-check made requests"
+    console = Console(command)
+    try:
+        console.wait_text("Select option (0-15):")
+        console.type("13\r")
+        console.wait_text("Select option (0-5):")
+        console.type("5\r")
+        console.wait_text("Logs archive /", timeout=15)
+        console.wait_text(". . .")
+        console.type("\r")
+        cleared = time.monotonic() + 5
+        while ". . ." in console.text():
+            assert time.monotonic() < cleared, "Export pause did not return to Diagnostics"
+            time.sleep(0.02)
+        console.wait_text("Select option (0-5):")
+        console.type("0\r")
+        console.wait_text("Select option (0-15):")
+        console.type("0\r")
+        assert console.process.wait(timeout=5) == 0
+    finally:
+        console.close()
+    assert (args.root / "requests.txt").read_text(encoding="utf-8") == requests, "Logs-only export performed network diagnostics"
+    print("[OK] Diagnostics -> 5 creates a logs archive through the real cmd.exe submenu")
     helper = fixture / "read-choice.bat"
     helper.write_text(f'@echo off\npowershell -NoProfile -ExecutionPolicy Bypass -File "{script_path}" -Action ReadMenuChoice\nexit /b %errorlevel%\n', encoding="ascii")
     for choice in ("0", "10", "111", "999"):
         result = subprocess.run(["cmd.exe", "/d", "/c", str(helper)], input=choice + "\n", text=True, capture_output=True, timeout=10)
         assert result.returncode == (255 if choice == "999" else 100 + int(choice)), result.stderr
+    export_command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(fixture / "utils" / "manage-logs.ps1"), "-Action", "Export", "-NoReveal"]
+    exported = subprocess.run(export_command, stdin=subprocess.DEVNULL, text=True, capture_output=True, timeout=15)
+    assert exported.returncode == 0, exported.stderr
+    newest = max((fixture / "runtime" / "logs" / "exports").glob("*.zip"), key=lambda path: path.stat().st_mtime)
+    with zipfile.ZipFile(newest) as archive:
+        assert set(archive.namelist()) == {"LOGS.txt", "events.jsonl", "manifest.json"}
+    print("[OK] shared menu/check session, normal exit journal and logs-only export")
     saved_script = script_path.read_bytes()
     script_path.write_text("throw 'Injected input helper failure'", encoding="utf-8-sig")
     console = Console(command)

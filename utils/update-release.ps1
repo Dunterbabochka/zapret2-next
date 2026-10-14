@@ -14,6 +14,15 @@ $ErrorActionPreference = 'Stop'
 if (-not $Root) { $Root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')) }
 . (Join-Path $PSScriptRoot 'update-release-core.ps1')
 . (Join-Path $PSScriptRoot 'update-release-state.ps1')
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+$logSession=''; $logOperation=''
+if ($Action -in @('Apply','Recover')) {
+    try {
+        $logTransaction=Read-ReleaseTransaction $Root
+        $logSession=[string]$logTransaction.LogSessionId; $logOperation=[string]$logTransaction.LogOperationId
+    } catch {}
+}
+Initialize-ZapretLog -Root $Root -Component update -Action $Action -SessionId $logSession -OperationId $logOperation
 $failed = $false
 $workerLease = $null
 
@@ -80,17 +89,20 @@ function Set-ReleaseMenuSetting([string]$Root, [string]$Name, [string]$Value) {
     if ($Name -eq 'fake-defaults' -and $Value -cne 'current') { throw 'Invalid fake defaults.' }
     $gate = Enter-ZapretBundleOperation $Root
     try {
+        $oldValue = try { if (Test-Path -LiteralPath (Join-Path $Root ('utils\'+$Name))) { ([IO.File]::ReadAllText((Join-Path $Root ('utils\'+$Name)))).Trim() } else { '' } } catch { Write-ZapretLogException $_ -Warning; '' }
         if ($Name -eq 'fake-defaults') {
             foreach ($file in @('discord_fake.mode','game_fake.mode')) { Write-AtomicTextFile (Join-Path $Root ('utils\' + $file)) "current`r`n" }
         } else { Write-AtomicTextFile -Path (Join-Path $Root ('utils\' + $Name)) -Content ($Value + "`r`n") }
     }
     finally { Exit-ZapretBundleOperation $gate }
+    Write-ZapretLogEvent -Stage settings -Result saved -Code SettingsSaved -Details @{setting=$Name;oldValue=$oldValue;newValue=$Value}
 }
 
 try {
     switch ($Action) {
         'ReadMenuChoice' {
             $selection=Read-ReleaseMenuChoice $Root
+            Write-ZapretLogEvent -Component menu -Action Select -Stage selection -Details @{selection=[int]$selection}
             if ($selection -eq 255) { exit 255 }
             # Reserve 0/1/... for errors from PowerShell itself. A failed input
             # helper must never be interpreted as "Install Service".
@@ -142,6 +154,7 @@ try {
         }
         'Recover' { Invoke-ReleaseRecover $Root }
         'ReleaseMenu' {
+            Close-ZapretLogMenu -Handoff
             $transaction = Read-ReleaseTransaction $Root
             [IO.File]::WriteAllText((Join-Path (Get-ReleaseSession $Root $transaction) 'menu-released'), 'released')
         }
@@ -152,14 +165,23 @@ try {
                 $path = Join-Path $Root 'utils\check_updates.enabled'
                 if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) }
                 else { Write-AtomicTextFile $path "enabled`r`n" }
+                Write-ZapretLogEvent -Stage settings -Result saved -Code SettingsSaved -Details @{setting='check_updates.enabled';autoCheck=[IO.File]::Exists($path)}
             } finally { Exit-ZapretBundleOperation $gate }
         }
     }
 } catch {
+    Write-ZapretLogException $_ -Code UpdateFailed
     if (-not $Quiet) { Write-Host ('[ERROR] ' + $_.Exception.Message) -ForegroundColor Red }
     if ($ReopenMenu) { Write-Host 'Результат восстановления записан в runtime\release-update\transaction.json.' -ForegroundColor Yellow }
     $failed = $true
+    if ($Action -in @('Prepare','Apply','Recover')) {
+        $recoveryState = try { (Read-ReleaseTransaction $Root).Status } catch { 'unavailable' }
+        Write-Host ('Code: UpdateFailed; recovery: ' + $recoveryState) -ForegroundColor Yellow
+        Write-Host '13. Run Diagnostics -> 5. Create logs archive' -ForegroundColor Yellow
+        Write-Host 'If the menu cannot open, run from this folder: powershell -NoProfile -ExecutionPolicy Bypass -File runtime\release-update\recovery\manage-logs.ps1 -Action Export -Root .' -ForegroundColor Yellow
+    }
 } finally {
+    Complete-ZapretLogOperation -ExitCode $(if ($failed) {1} else {0})
     if ($workerLease) { $workerLease.Dispose() }
     if ($ReopenMenu) {
         Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ""' + (Join-Path $Root 'service.bat') + '""') -WorkingDirectory $Root -WindowStyle Normal

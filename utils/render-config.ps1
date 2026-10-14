@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[A-Za-z0-9 _-]+$')]
     [string]$Preset,
@@ -27,6 +27,10 @@ param(
 
     [switch]$DryRun
 )
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component renderer -Action 'Render'
+try {
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -305,5 +309,9 @@ if (-not (Test-Path -LiteralPath $outputDir)) {
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 }
 [IO.File]::WriteAllText($outputPath, $content.Trim() + "`r`n", [Text.UTF8Encoding]::new($false))
+Write-ZapretLogEvent -Stage settings -Details @{preset=$Preset;game=$GameMode;ipset=$IPSetMode;voice=$VoiceMode;discordFake=$DiscordFake;gameFake=$GameFake}
 Write-Output $outputPath
 } finally { Exit-ZapretBundleOperation $bundleGate }
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

@@ -1,4 +1,5 @@
-﻿# Shared wizard probes keep their detailed output local. Only the explicit
+﻿. (Join-Path $PSScriptRoot 'session-log.ps1')
+# Shared wizard probes keep their detailed output local. Only the explicit
 # projection in New-SupportPublicDocument may cross the support ZIP boundary.
 function Read-SupportSettings {
     $settings = [ordered]@{}
@@ -212,6 +213,7 @@ function Get-SupportVersions {
 
 function Add-SupportIssue([string]$Code) {
     $script:support.issues += $Code
+    Write-ZapretLogEvent -Component support -Result $(if ($Code -eq 'Canceled') {'canceled'} else {'error'}) -Code $(if ($Code -eq 'Canceled') {'OperationCanceled'} else {'OperationFailed'}) -Details @{supportCode=$Code}
 }
 
 function Stop-SupportService { Stop-ZapretService }
@@ -219,7 +221,9 @@ function Restore-SupportService { Start-ZapretService }
 
 function Invoke-SupportBaseline {
     foreach ($target in $script:targets) {
-        $script:result.webResults += Invoke-CurlEndpoint -Target $target -Phase 'baseline' -Preset '' -Pass 1 -IPSetMode 'none' -VoiceMode 'off'
+        $row=Invoke-CurlEndpoint -Target $target -Phase 'baseline' -Preset '' -Pass 1 -IPSetMode 'none' -VoiceMode 'off'
+        $script:result.webResults += $row
+        Write-ZapretLogEvent -Component support -Result $(if ($row.Success) {'ok'} else {'warning'}) -Details @{curlCode=$row.CurlExitCode;httpCode=$row.HttpCode;durationMs=[long]$row.DurationMs}
     }
 }
 
@@ -227,6 +231,7 @@ function Invoke-SupportPreset([string]$Preset, [string]$IPSetMode) {
     try {
         Invoke-WebPass -Preset $Preset -Pass 1 -IPSetMode $IPSetMode -VoiceMode 'off' -Phase 'support-scan' | Out-Null
     } catch [OperationCanceledException] { throw } catch {
+        Write-ZapretLogException $_ -Warning
         # A broken preset must not prevent checks of the remaining strategies.
         $_ | Out-String | Add-Content -LiteralPath (Join-Path $script:resultDir 'errors-local.txt') -Encoding UTF8
         Add-SupportIssue 'EngineStartFailed'
@@ -337,10 +342,28 @@ function Save-SupportArtifacts([string]$RunDirectory) {
             'Цели с такой ошибкой указаны в web-results.csv; подробности curl сохранены только в local/results-local.json.')
     }
     Write-Utf8File (Join-Path $share 'REPORT.txt') (($lines -join "`r`n") + "`r`n")
+    $logFiles=@()
+    try {
+        $logs=Join-Path $share 'logs'
+        $null=Export-ZapretSessionLogs -Root $root -Directory $logs
+        $logFiles=@('LOGS.txt','events.jsonl','manifest.json') | ForEach-Object { Join-Path $logs $_ }
+    } catch {
+        Write-ZapretLogException $_ -Code ExportIncomplete -Warning
+        Add-Content -LiteralPath (Join-Path $share 'REPORT.txt') -Value 'Session logs unavailable; the diagnostic report was preserved.' -Encoding UTF8
+    }
     $files = @('REPORT.txt','results.json','web-results.csv') | ForEach-Object { Join-Path $share $_ }
     # Never archive a runtime directory recursively: local logs can contain secrets.
     $zip = $RunDirectory + '.zip'
-    Compress-Archive -LiteralPath $files -DestinationPath $zip -CompressionLevel Optimal
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $archive=[IO.Compression.ZipFile]::Open($zip, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($file in $files) {
+            $null=[IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,$file,(Split-Path -Leaf $file))
+        }
+        foreach ($file in $logFiles) {
+            $null=[IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,$file,('logs/'+(Split-Path -Leaf $file)))
+        }
+    } finally { $archive.Dispose() }
     return $zip
 }
 

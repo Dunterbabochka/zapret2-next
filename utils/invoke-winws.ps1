@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$Config,
 
@@ -15,6 +15,10 @@ param(
     [ValidateRange(1, 30)]
     [int]$StartupWaitSeconds = 3
 )
+
+. (Join-Path $PSScriptRoot 'session-log.ps1')
+Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component engine -Action $(if ($Validate) {'Validate'} else {'Launch'})
+try {
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -51,11 +55,11 @@ function Show-EngineLog {
 
 if (-not (Test-Path -LiteralPath $winws -PathType Leaf)) {
     Write-Host "[ERROR] winws2.exe not found: $winws" -ForegroundColor Red
-    exit 10
+    Complete-ZapretLogOperation -ExitCode 10; exit 10
 }
 if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
     Write-Host "[ERROR] Config not found: $configPath" -ForegroundColor Red
-    exit 11
+    Complete-ZapretLogOperation -ExitCode 11; exit 11
 }
 
 $logDir = Split-Path -Parent $logBase
@@ -84,11 +88,11 @@ if (-not $Validate) {
             $oldProcess = Get-Process -Id $engine.ProcessId -ErrorAction SilentlyContinue
             if ($oldProcess -and -not $oldProcess.WaitForExit(5000)) { throw 'Previous winws2 process did not stop.' }
         }
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         if ($launchLock) { $launchLock.Dispose() }
         Exit-ZapretBundleOperation $bundleGate
         Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
-        exit 15
+        Complete-ZapretLogOperation -ExitCode 15; exit 15
     }
 }
 
@@ -98,12 +102,12 @@ try {
     $process = Start-Process -FilePath $winws -ArgumentList $argument -WorkingDirectory (Split-Path -Parent $winws) -WindowStyle Hidden -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
     # Retain the process handle so Windows PowerShell keeps the exit code.
     $null = $process.Handle
-} catch {
+} catch { Write-ZapretLogException $_ -Warning;
     if ($launchLock) { $launchLock.Dispose() }
     Exit-ZapretBundleOperation $bundleGate
     Write-Host "[ERROR] Could not launch winws2: $($_.Exception.Message)" -ForegroundColor Red
     Show-EngineLog
-    exit 12
+    Complete-ZapretLogOperation -ExitCode 12; exit 12
 }
 
 if ($Validate) {
@@ -112,11 +116,11 @@ if ($Validate) {
         $process.WaitForExit()
         Write-Host "[ERROR] Config validation timed out after $ValidationTimeoutSeconds seconds." -ForegroundColor Red
         Show-EngineLog
-        exit 16
+        Complete-ZapretLogOperation -ExitCode 16; exit 16
     }
     $process.WaitForExit()
     $process.Refresh()
-    $engineExitCode = try { $process.ExitCode } catch { $null }
+    $engineExitCode = try { $process.ExitCode } catch { Write-ZapretLogException $_ -Warning; $null }
     $verified = (Test-Path -LiteralPath $stdoutLog -PathType Leaf) -and
         ([bool](Select-String -LiteralPath $stdoutLog -Pattern '^command line parameters verified$' -Quiet))
 
@@ -124,12 +128,13 @@ if ($Validate) {
     # child with redirected streams. The dry-run success marker is emitted by
     # winws2 only after its complete argument and file validation succeeds.
     if ($engineExitCode -eq 0 -or ($null -eq $engineExitCode -and $verified)) {
-        exit 0
+        Complete-ZapretLogOperation -ExitCode 0; exit 0
     } else {
         $displayExitCode = if ($null -eq $engineExitCode) { 'unknown' } else { $engineExitCode }
+        Write-ZapretLogEvent -Stage validate -Result error -Code NativeFailed -Details @{exitCode=$engineExitCode}
         Write-Host "[ERROR] winws2 rejected the generated config (exit $displayExitCode)." -ForegroundColor Red
         Show-EngineLog
-        exit 13
+        Complete-ZapretLogOperation -ExitCode 13; exit 13
     }
 }
 
@@ -141,9 +146,13 @@ if ($process.HasExited) {
     $process.WaitForExit()
     $process.Refresh()
     $displayExitCode = if ($null -eq $process.ExitCode) { 'unknown' } else { $process.ExitCode }
+    Write-ZapretLogEvent -Stage start -Result error -Code NativeFailed -Details @{exitCode=$displayExitCode}
     Write-Host "[ERROR] winws2 stopped during startup (exit $displayExitCode)." -ForegroundColor Red
     Show-EngineLog
-    exit 14
+    Complete-ZapretLogOperation -ExitCode 14; exit 14
 }
 
-exit 0
+Complete-ZapretLogOperation -ExitCode 0; exit 0
+
+} catch { Write-ZapretLogException $_; throw }
+finally { Complete-ZapretLogOperation }

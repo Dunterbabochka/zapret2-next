@@ -44,3 +44,11 @@ the wizard self-test simulates 13 outcomes without changing live services.
 ## Release decision
 
 Publish a stable release only if both Windows versions pass package/runtime checks, all public strategies start successfully, service install/remove works, and no new regressions are found. Otherwise keep the release draft and file an issue with sanitized diagnostics.
+
+## Management session logs (Windows 10/11 VM)
+
+1. Start `service.bat`, change a mode, decline the service restart, and inspect the session: saved settings and deferred application must be distinguishable. Check status and run quick diagnostics. Close normally, reopen, then close the console abruptly; the following launch must mark the unfinished session.
+2. In the disposable update lab, update 9.9.0 → 9.9.1; the old menu, worker and reopened menu must share the log session. Repeat with API failure, truncated ZIP and a blocked replacement file. The code and rollback outcome must be visible and archived. Never use a working installation for deliberate interruption tests.
+3. Use Diagnostics → 5 to export while Zapret and Telegram are running. Neither must restart; no network test is started. Check the selected ZIP in Explorer and its three explicit members. Create a normal support report and check the same three members under `logs/`.
+4. Reopen six times and verify retention; run two menus concurrently and export during an action. Temporarily deny writes only in the disposable VM fixture: one logging warning must not change an action's result. Restore permissions afterward.
+5. Inspect the archive and sendable session files for test secrets, addresses, usernames, private paths and list content. No additional watcher or startup task may appear. Existing advanced diagnostic/raw logs remain local and are outside the safe archive contract.

@@ -1,4 +1,4 @@
-function Save-ResultArtifacts {
+﻿function Save-ResultArtifacts {
     if (-not $script:resultDir -or -not (Test-Path -LiteralPath $script:resultDir -PathType Container)) { return }
 
     Get-ChildItem -LiteralPath $script:resultDir -Recurse -Filter '*.etl' -File -ErrorAction SilentlyContinue |
@@ -26,7 +26,7 @@ function Save-ResultArtifacts {
 
 function Invoke-WizardContractValidation {
     $errors = [Collections.Generic.List[string]]::new()
-    try { $targets = @(Get-WizardTargets) } catch { $errors.Add($_.Exception.Message); $targets = @() }
+    try { $targets = @(Get-WizardTargets) } catch { Write-ZapretLogException $_ -Warning; $errors.Add($_.Exception.Message); $targets = @() }
 
     if ($publicPresets.Count -ne 11 -or @($publicPresets | Sort-Object -Unique).Count -ne 11) {
         $errors.Add('The wizard must expose exactly eleven unique public presets.')
@@ -109,7 +109,7 @@ function Get-WindowsInfo {
             BuildNumber = [string]$os.BuildNumber
             OSArchitecture = [string]$os.OSArchitecture
         }
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         return [pscustomobject]@{
             Caption = [Environment]::OSVersion.VersionString
             Version = [Environment]::OSVersion.Version.ToString()
@@ -239,7 +239,7 @@ function Invoke-VoiceManualTest {
     } finally {
         if ($script:pktMonOwned -or $null -ne $script:pktMonState) {
             $ports = @($observations | Where-Object Protocol -eq 'UDP' | ForEach-Object { [int]$_.LocalPort } | Sort-Object -Unique)
-            try { Stop-PktMonCapture -DiscordLocalPorts $ports | Out-Null } catch {}
+            try { Stop-PktMonCapture -DiscordLocalPorts $ports | Out-Null } catch { Write-ZapretLogException $_ -Warning;}
         }
         Stop-WizardEngine
     }
@@ -306,14 +306,14 @@ function Invoke-FinalManualRecheck {
     } finally {
         if ($script:pktMonOwned -or $null -ne $script:pktMonState) {
             $ports = @($observations | Where-Object Protocol -eq 'UDP' | ForEach-Object { [int]$_.LocalPort } | Sort-Object -Unique)
-            try { Stop-PktMonCapture -DiscordLocalPorts $ports | Out-Null } catch {}
+            try { Stop-PktMonCapture -DiscordLocalPorts $ports | Out-Null } catch { Write-ZapretLogException $_ -Warning;}
         }
         Stop-WizardEngine
     }
 }
 
 function Invoke-CompatibilityWizard {
-    try { $Host.UI.RawUI.WindowTitle = 'Zapret 2 NEXT - Compatibility Wizard' } catch {}
+    try { $Host.UI.RawUI.WindowTitle = 'Zapret 2 NEXT - Compatibility Wizard' } catch { Write-ZapretLogException $_ -Warning;}
     Clear-Host
     Write-Host '============================================================' -ForegroundColor Cyan
     Write-Host '          ZAPRET 2 NEXT - COMPATIBILITY WIZARD' -ForegroundColor Cyan
@@ -432,12 +432,12 @@ function Invoke-CompatibilityWizard {
             Installed = $false
         }
         $script:result.status = if ($confirmed) { 'completed-confirmed' } else { 'completed-unconfirmed' }
-    } catch [OperationCanceledException] {
+    } catch [OperationCanceledException] { Write-ZapretLogException $_ -Warning;
         $script:result.status = 'canceled'
         $script:result.errors += $_.Exception.Message
         Write-Host "Canceled by user: $($_.Exception.Message)" -ForegroundColor Yellow
         $exitCode = 2
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         $script:result.status = 'failed'
         $script:result.errors += $_.Exception.ToString()
         Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
@@ -469,10 +469,11 @@ function Invoke-CompatibilityWizard {
         Write-Host "Report directory: $script:resultDir" -ForegroundColor Green
         Write-Host "Result ZIP: $script:zipPath" -ForegroundColor Cyan
         Write-Host 'No settings were installed or saved.' -ForegroundColor Yellow
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         Write-Host "[REPORT ERROR] $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "Partial files remain in: $script:resultDir" -ForegroundColor Yellow
         $exitCode = 1
     }
+    Complete-ZapretLogOperation -ExitCode $exitCode
     exit $exitCode
 }

@@ -1,4 +1,5 @@
-# Service operations are kept separate so rollback can be tested without SCM.
+﻿# Service operations are kept separate so rollback can be tested without SCM.
+. (Join-Path $PSScriptRoot 'session-log.ps1')
 . (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 function Get-ZapretServiceSnapshot {
     $service = Get-CimInstance Win32_Service -Filter "Name='winws2'" -ErrorAction Stop
@@ -22,20 +23,24 @@ function Assert-ZapretNoManualEngine {
 }
 
 function Stop-ZapretService {
+    Write-ZapretLogEvent -Component service -Stage stop -Result started
     $service = Get-Service winws2 -ErrorAction Stop
     if ($service.Status -ne 'Stopped') {
         if ($service.Status -ne 'StopPending') { $service.Stop() }
         $service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
     }
+    Write-ZapretLogEvent -Component service -Stage stop -Result stopped
 }
 
 function Start-ZapretService {
+    Write-ZapretLogEvent -Component service -Stage start -Result started
     $service = Get-Service winws2 -ErrorAction Stop
     if ($service.Status -ne 'Running' -and $service.Status -ne 'StartPending') { $service.Start() }
     $service.WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
     Start-Sleep -Seconds 3
     $service.Refresh()
     if ($service.Status -ne 'Running') { throw "Service stopped during startup ($($service.Status))." }
+    Write-ZapretLogEvent -Component service -Stage start -Result running
 }
 
 function Set-ZapretServiceRegistration {
@@ -147,8 +152,9 @@ function Set-ZapretServiceConfiguration {
             Set-ZapretServiceRegistration -ImagePath $image -Strategy $Preset -Create (-not $snapshot)
         }
         if ($Install -or $Restart) { Start-ZapretService }
+        Write-ZapretLogEvent -Component service -Stage settings -Result $(if ($Install -or $Restart) {'applied'} else {'deferred'}) -Code $(if ($Install -or $Restart) {'SettingsApplied'} else {'SettingsDeferred'}) -Details @{preset=$Preset;ipset=$IPSetMode}
         Write-Host '[OK] Validated service configuration applied.' -ForegroundColor Green
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         $failure = $_.Exception.Message
         if ($changed -or $stopped -or $registrationChanged) {
             try {
@@ -162,8 +168,9 @@ function Set-ZapretServiceConfiguration {
                 }
                 if ($snapshot -and $registrationChanged) { Restore-ZapretServiceRegistration $snapshot }
                 if ($snapshot -and $snapshot.WasRunning -and ($Install -or $Restart)) { Start-ZapretService }
+                Write-ZapretLogEvent -Component service -Action Restore -Stage restore -Details @{statePreserved=$true}
                 Write-Host '[WARN] Previous service configuration restored.' -ForegroundColor Yellow
-            } catch {
+            } catch { Write-ZapretLogException $_ -Warning;
                 throw "$failure Rollback also failed: $($_.Exception.Message). Inspect runtime\service.txt and service state."
             }
         }

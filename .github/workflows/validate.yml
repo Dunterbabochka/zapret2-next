@@ -43,6 +43,9 @@ jobs:
           ./utils/validate-wizard.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./utils/compatibility-wizard.ps1 -SelfTest
+      - name: Validate bounded session journals and safe log exports
+        shell: powershell
+        run: ./utils/validate-session-log.ps1 -RequireLinks
       - name: Validate automatic support reports and restoration
         shell: powershell
         run: ./utils/validate-support.ps1

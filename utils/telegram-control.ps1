@@ -1,5 +1,6 @@
-# Telegram runs in the current user's interactive session. Scheduler/process
+﻿# Telegram runs in the current user's interactive session. Scheduler/process
 # operations are isolated behind functions so offline tests never touch Windows.
+. (Join-Path $PSScriptRoot 'session-log.ps1')
 . (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 function Get-ZapretTelegramCurrentIdentity {
     return [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -44,7 +45,7 @@ function Get-ZapretTelegramIdentity {
         throw 'Cannot resolve the Windows desktop user SID.'
     }
     try { return (New-Object Security.Principal.SecurityIdentifier([string]$owner.Sid)).Value }
-    catch { throw 'The Windows desktop user SID is invalid.' }
+    catch { Write-ZapretLogException $_ -Warning; throw 'The Windows desktop user SID is invalid.' }
 }
 
 function Get-ZapretTelegramContext {
@@ -110,13 +111,13 @@ function Test-ZapretTelegramTaskPrincipal {
         # Task Scheduler can return a resolved account name even when registered
         # with a SID. Compare its identity rather than its display spelling.
         try { $principalSID = (New-Object Security.Principal.NTAccount($principalSID)).Translate([Security.Principal.SecurityIdentifier]).Value }
-        catch {
+        catch { Write-ZapretLogException $_ -Warning;
             # The provider may shorten a local account to "user". On Windows a
             # bare lookup can fail when that name is also the computer name.
             # Qualify only local-looking names, then still compare the SID.
             if ($principalSID.Contains('\') -or $principalSID.Contains('@')) { return $false }
             try { $principalSID = (New-Object Security.Principal.NTAccount([Environment]::MachineName, $principalSID)).Translate([Security.Principal.SecurityIdentifier]).Value }
-            catch { return $false }
+            catch { Write-ZapretLogException $_ -Warning; return $false }
         }
     }
     if ($principalSID -ine $SID) { return $false }
@@ -231,7 +232,7 @@ function Test-ZapretTelegramFreePort {
     param([int]$Port)
     if (@(Get-ZapretTelegramListeners $Port).Count) { return $false }
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
-    try { $listener.Start(); return $true } catch [Net.Sockets.SocketException] { return $false } finally { $listener.Stop() }
+    try { $listener.Start(); return $true } catch [Net.Sockets.SocketException] { Write-ZapretLogException $_ -Warning; return $false } finally { $listener.Stop() }
 }
 
 function New-ZapretTelegramConfig {
@@ -251,7 +252,7 @@ function Read-ZapretTelegramConfig {
     param($Context)
     if (-not [IO.File]::Exists($Context.Config)) { return $null }
     try { $config = [IO.File]::ReadAllText($Context.Config) | ConvertFrom-Json -ErrorAction Stop }
-    catch { throw 'The Telegram config is not valid JSON. Restore your saved config from backup.' }
+    catch { Write-ZapretLogException $_ -Warning; throw 'The Telegram config is not valid JSON. Restore your saved config from backup.' }
     if ($config.version -isnot [int] -or $config.version -ne 1 -or $config.host -cne '127.0.0.1' -or $config.port -isnot [int] -or $config.port -lt 1024 -or $config.port -gt 65535 -or [string]$config.secret -cnotmatch '^[0-9a-f]{32}$' -or $config.cfproxy -isnot [bool]) {
         throw 'Invalid Telegram config. Expected integer version 1, host 127.0.0.1, a TCP port in 1024-65535, a 32-character lowercase hex secret and boolean cfproxy.'
     }
@@ -354,7 +355,7 @@ function Get-ZapretTelegramStartupError {
         $message = $message -replace '(?i)(?:dd)?[0-9a-f]{32}', '[redacted]'
         if ($message.Length -gt 500) { $message = $message.Substring(0, 500) }
         return $message
-    } catch { return 'A startup error report exists but could not be read.' }
+    } catch { Write-ZapretLogException $_ -Warning; return 'A startup error report exists but could not be read.' }
 }
 
 function Wait-ZapretTelegramReady {
@@ -370,7 +371,7 @@ function Wait-ZapretTelegramReady {
                 throw "Local port $Port was taken by another process during startup."
             }
         }
-        if ($task -and [string]$task.State -eq 'Running' -and $listeners.Count) { return }
+        if ($task -and [string]$task.State -eq 'Running' -and $listeners.Count) { Write-ZapretLogEvent -Component telegram -Stage start -Result running -Details @{port=$Port}; return }
         Start-Sleep -Milliseconds 300
     } while ($timer.Elapsed.TotalSeconds -lt $TimeoutSeconds)
     $info = Get-ScheduledTaskInfo -TaskName $Context.TaskName -TaskPath '\' -ErrorAction Stop
@@ -411,7 +412,7 @@ function Invoke-ZapretTelegramEnable {
         Start-ZapretTelegramTask $context
         Wait-ZapretTelegramReady $context $config.port
         Write-Host "[OK] Telegram proxy enabled at 127.0.0.1:$($config.port); starts when this user signs in." -ForegroundColor Green
-    } catch {
+    } catch { Write-ZapretLogException $_ -Warning;
         $failure = $_.Exception.Message
         if ($taskChanged -or $stopped -or $configChanged) {
             try {
@@ -426,7 +427,7 @@ function Invoke-ZapretTelegramEnable {
                 }
                 if ($snapshot -and $snapshot.WasRunning) { Start-ZapretTelegramTask $context }
                 Write-Host '[WARN] Previous Telegram task and config restored.' -ForegroundColor Yellow
-            } catch { throw "$failure Rollback also failed: $($_.Exception.Message). Check the Telegram task and $($context.Config)." }
+            } catch { Write-ZapretLogException $_ -Warning; throw "$failure Rollback also failed: $($_.Exception.Message). Check the Telegram task and $($context.Config)." }
         }
         throw $failure
     } finally { $lock.Dispose() }
@@ -497,7 +498,8 @@ function Get-ZapretTelegramStatus {
             } elseif ($task) { $state = 'CONFIG_MISSING' }
             if ($state -eq 'STOPPED') { $detail = Get-ZapretTelegramStartupError $context }
         }
-    } catch { $detail = $_.Exception.Message; $state = 'ERROR' }
+    } catch { Write-ZapretLogException $_ -Warning; $detail = $_.Exception.Message; $state = 'ERROR' }
+    Write-ZapretLogEvent -Component telegram -Action Status -Code StateObserved -Details @{telegramState=$state}
     if ($Compact) { return $state }
     # The secret and complete config never become part of the status output.
     return [pscustomobject][ordered]@{ State = $state; Task = $taskState; Listener = $listener; Endpoint = $endpoint; Log = $context.Log; Detail = $detail }
@@ -632,7 +634,7 @@ function Invoke-ZapretTelegramDiagnosticsCore {
         $process.Refresh()
         if (-not [IO.File]::Exists($report)) { throw "Telegram diagnostics produced no report (exit $($process.ExitCode))." }
         try { $result = [IO.File]::ReadAllText($report) | ConvertFrom-Json -ErrorAction Stop }
-        catch { throw 'Telegram diagnostics produced an invalid JSON report.' }
+        catch { Write-ZapretLogException $_ -Warning; throw 'Telegram diagnostics produced an invalid JSON report.' }
         Write-Host "Telegram endpoint diagnostics: $report" -ForegroundColor Cyan
         # Output only selected public fields, never the config or secret.
         if ($result.ok -eq $false) { throw "Telegram diagnostics failed: $($result.message)" }

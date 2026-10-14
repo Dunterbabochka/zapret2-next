@@ -1,4 +1,4 @@
-# Real HTTP, ZIP and file transactions; every Windows service/task/process
+﻿# Real HTTP, ZIP and file transactions; every Windows service/task/process
 # boundary is replaced before invoking the updater. No GitHub writes.
 param([switch]$SkipConsole, [switch]$RequireNativeEngine)
 $ErrorActionPreference = 'Stop'
@@ -74,6 +74,7 @@ function New-InstalledFixture([string]$Destination) {
         Copy-Item -LiteralPath (Join-Path $sourceRoot $relative) -Destination $Destination -Recurse -Force
     }
     Write-FixtureText (Join-Path $Destination '.service\version.txt') '9.9.0'
+    Initialize-ZapretLog -Root $Destination -Component update -Action Check
     Write-FixtureText (Join-Path $Destination 'utils\game_filter.mode') "all`r`n"
     Write-FixtureText (Join-Path $Destination 'utils\check_updates.enabled') "enabled`r`n"
     Write-FixtureText (Join-Path $Destination 'lists\list-general-user.txt') "# private`r`nmy-domain.example`r`n"
@@ -90,6 +91,7 @@ function Reset-PreparedFixture {
     $script:failurePoint='';$script:failStart=$false;$script:failStop=$false;$script:noService=$false;$script:stoppedService=$false
     $script:failStartCount=0
     $transaction=Read-ReleaseJson (Join-Path (Get-ReleaseUpdateDirectory $script:install) 'transaction.json')
+    Initialize-ZapretLog -Root $script:install -Component update -Action Apply -SessionId $transaction.LogSessionId
     $transaction.Root=$script:install
     $transaction.Windows=Get-ReleaseWindowsState $script:install
     $transaction.Fingerprint=Get-ReleaseFingerprint $script:install $transaction.Windows @(Get-ReleaseSettings $script:install)
@@ -151,6 +153,7 @@ try {
     Set-ServerScenario 'not-modified'
     $check=Invoke-ReleaseCheck $script:template
     Assert-Update ($check.Status -eq 'available' -and $check.ETag -eq '"fixture-v1"') 'ETag/304 did not retain metadata'
+    Assert-Update (@((Get-ZapretLogSnapshot $script:template).Events | Where-Object {$_.action -eq 'HTTP' -and $_.details.httpCode -eq 304}).Count -gt 0) 'Conditional HTTP result not logged'
     foreach ($mode in @('unavailable','missing-asset','foreign-asset','beta','draft')) {
         Set-ServerScenario $mode
         Assert-Update ((Invoke-ReleaseCheck $script:template -Force).Status -eq 'unavailable') ("Invalid release accepted: "+$mode)
@@ -167,6 +170,7 @@ try {
         if ($mode -eq 'truncated') {
             $afterRequests=@([IO.File]::ReadAllLines((Join-Path $fixture 'requests.txt')) | Where-Object {$_ -eq '/archive'}).Count
             Assert-Update (($afterRequests-$beforeRequests) -eq 2) 'A partial download did not retry exactly once'
+            Assert-Update (@((Get-ZapretLogSnapshot $script:template).Events | Where-Object code -eq 'DownloadRetry').Count -gt 0) 'Download retry not logged'
         }
     }
     Set-ServerScenario 'ok' '9.9.1' 'invalid.zip'
@@ -204,6 +208,11 @@ try {
     Assert-Update (-not (Test-Path -LiteralPath (Join-Path (Get-ReleaseSession $script:install $result) 'backup'))) 'Old release was not deleted after success'
     Assert-Preserved $script:install
     Assert-Update (($script:events -join ',') -eq 'stop,start') 'Unexpected process ordering'
+    $logEvents=(Get-ZapretLogSnapshot $script:install).Events
+    Assert-Update (@($logEvents | Where-Object {$_.component -eq 'update' -and $_.stage -eq 'files'}).Count -gt 0) 'File replacement steps missing from journal'
+    Assert-Update (Test-Path (Join-Path $script:install 'runtime\release-update\recovery\session-log.ps1')) 'Recovery logger missing'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:install 'runtime\release-update\recovery\manage-logs.ps1') -Root $script:install -Action Export -NoReveal
+    Assert-Update ($LASTEXITCODE -eq 0) 'Standalone recovery logs exporter failed'
 
     $transaction=Reset-PreparedFixture
     $locked=[IO.File]::Open((Join-Path $script:install 'bin\winws2.exe'),'Open','Read','None')
@@ -256,7 +265,9 @@ try {
         if (-not $child.WaitForExit(30000)) { $child.Kill();throw 'Crash fixture timed out' }
         Assert-Update ($child.ExitCode -eq 91) ('Crash checkpoint was not reached: '+$point)
         $child.Dispose()
+        Initialize-ZapretLog -Root $script:install -Component update -Action Recover -SessionId $transaction.LogSessionId
         Invoke-ReleaseRecover $script:install
+        Assert-Update (@((Get-ZapretLogSnapshot $script:install).Events | Where-Object code -eq 'OperationInterrupted').Count -gt 0) 'Crash not recorded in original session'
         Assert-Update ((Read-ReleaseTransaction $script:install).Status -eq 'rolled-back' -and (Get-ReleaseVersion $script:install) -eq '9.9.0') ('Crash recovery failed at '+$point)
         Assert-Preserved $script:install
     }

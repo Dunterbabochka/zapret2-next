@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateRange(3, 30)]
     [int]$TimeoutSeconds = 8,
@@ -8,6 +8,7 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'session-log.ps1')
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $renderer = Join-Path $PSScriptRoot 'render-config.ps1'
 $starter = Join-Path $PSScriptRoot 'invoke-winws.ps1'

@@ -1,5 +1,6 @@
 ﻿# Transport, package validation and durable update state. Tests replace boundary
 # functions, never disable checksum/path checks or operate on the developer tree.
+. (Join-Path $PSScriptRoot 'session-log.ps1')
 . (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 . (Join-Path $PSScriptRoot 'ipset-utils.ps1')
 . (Join-Path $PSScriptRoot 'service-control.ps1')
@@ -97,13 +98,22 @@ function Invoke-ReleaseHttp {
     if ($Download) { $arguments += @('--speed-limit','1024','--speed-time','30') }
     if ($ETag) {
         if ($ETag -match '[\r\n]' -or $ETag.Length -gt 256) { throw 'Invalid cached ETag.' }
-        $arguments += @('--header', ('If-None-Match: ' + $ETag))
+        $nativeETag=$ETag
+        # Windows PowerShell's legacy native argv strips unescaped quotes.
+        if ($PSVersionTable.PSVersion.Major -le 5) { $nativeETag=$ETag.Replace('"','\"') }
+        $arguments += @('--header', ('If-None-Match: ' + $nativeETag))
     }
     $arguments += @('--url',$target.Url)
+    Write-ZapretLogEvent -Action HTTP -Stage request -Details @{etagSent=[bool]$ETag}
     $code = & curl.exe @arguments 2>$null
-    if ($LASTEXITCODE -ne 0) { throw 'GitHub download failed or timed out. The installed version has not been removed.' }
+    $curlExit=$LASTEXITCODE
+    $httpStatus=0; $null=[int]::TryParse([string]($code | Select-Object -Last 1),[ref]$httpStatus)
+    $transportOk=$curlExit -eq 0 -and $httpStatus -ge 200 -and $httpStatus -lt 400
+    Write-ZapretLogEvent -Action HTTP -Result $(if ($transportOk) {'ok'} else {'error'}) -Code $(if ($transportOk) {'None'} else {'HTTPFailed'}) -Details @{curlCode=$curlExit;httpCode=$httpStatus}
+    if ($curlExit -ne 0) { throw 'GitHub download failed or timed out. The installed version has not been removed.' }
     $tag = ''
     foreach ($line in [IO.File]::ReadAllLines($headers)) { if ($line -match '^(?i:etag):\s*(.+)$') { $tag = $matches[1].Trim() } }
+    Write-ZapretLogEvent -Action HTTP -Details @{etagReceived=[bool]$tag}
     return [pscustomobject]@{ Status = [int]($code | Select-Object -Last 1); ETag = $tag }
 }
 function ConvertTo-ReleaseOffer($Release, [string]$Repository) {
@@ -141,8 +151,11 @@ function Invoke-ReleaseCheck([string]$Root, [switch]$Force) {
         $result = [pscustomobject]@{ Status=$status; Repository=$repository; Installed=$installed; Offer=$offer
             ETag=$(if ($response.ETag) {$response.ETag} else {$etag}); CheckedUtc=[DateTime]::UtcNow.ToString('o'); Error='' }
         Write-ReleaseJson $cachePath $result
+        Write-ZapretLogEvent -Action Check -Result $status -Details @{fromVersion=$installed;toVersion=$offer.Version}
         return $result
     } catch {
+        Write-ZapretLogException $_ -Code HTTPFailed -Warning
+        Write-ZapretLogEvent -Action Check -Result unavailable -Code HTTPFailed
         if (-not $checkLock) { return $null }
         $result = [pscustomobject]@{Status='unavailable';Repository='';Installed='';Offer=$null;ETag='';CheckedUtc=[DateTime]::UtcNow.ToString('o');Error=$_.Exception.Message}
         Write-ReleaseJson $cachePath $result
@@ -153,14 +166,18 @@ function Invoke-ReleaseCheck([string]$Root, [switch]$Force) {
     }
 }
 function Save-ReleaseDownload([string]$Url, [string]$Path) {
+    $assetKind=if ((Split-Path -Leaf $Path) -ceq 'release-sha256.txt') {'checksum'} else {'archive'}
     for ($attempt = 0; $attempt -lt 2; $attempt++) {
         try {
+            Write-ZapretLogEvent -Action Download -Stage request -Details @{attempt=($attempt+1);asset=$assetKind}
             $response = Invoke-ReleaseHttp -Url $Url -Output $Path -Download
             if ($response.Status -ne 200) { throw "Release download returned HTTP $($response.Status)." }
             return
         } catch {
             if ([IO.File]::Exists($Path)) { [IO.File]::Delete($Path) }
-            if ($attempt -eq 1) { throw }
+            Write-ZapretLogException $_ -Warning
+            if ($attempt -eq 1) { Write-ZapretLogEvent -Action Download -Stage end -Result error -Code HTTPFailed -Details @{attempt=2;asset=$assetKind}; throw }
+            Write-ZapretLogEvent -Action Download -Stage retry -Result warning -Code DownloadRetry -Details @{attempt=2;asset=$assetKind}
         }
     }
 }

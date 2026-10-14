@@ -1,4 +1,4 @@
-param([string]$Root, [string]$Source, [string]$Point)
+﻿param([string]$Root, [string]$Source, [string]$Point)
 $ErrorActionPreference='Stop'
 . (Join-Path $Source 'utils\update-release-core.ps1')
 . (Join-Path $Source 'utils\update-release-state.ps1')
@@ -16,5 +16,7 @@ function Test-ReleaseConfig($Root,$Config,$Output,[switch]$DryRun) {
 function Invoke-ReleaseCheckpoint([string]$Name) {
     if ($Name -ceq $Point) { [Environment]::Exit(91) }
 }
+$transaction=Read-ReleaseTransaction $Root
+Initialize-ZapretLog -Root $Root -Component update -Action Apply -SessionId $transaction.LogSessionId
 $null=Invoke-ReleaseApply $Root
 throw 'The crash checkpoint was not reached.'
