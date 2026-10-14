@@ -126,3 +126,6 @@ Assert-Startup ($LASTEXITCODE -ne 0) 'Corrupt native helper was loaded'
 Close-ZapretLogMenu -OwnerProcessId $PID
 Complete-ZapretLogOperation
 Write-Host "[OK] Startup/menu contracts: $checks checks. Live services and Telegram were not changed."
+# The expected corrupt-helper subprocess exits 1. GitHub's PowerShell wrapper
+# propagates LASTEXITCODE even when every assertion passed.
+exit 0
