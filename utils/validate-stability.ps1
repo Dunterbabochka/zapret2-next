@@ -121,6 +121,7 @@ exit $LASTEXITCODE
     $engineRoot = Join-Path $fixture 'engine'
     New-Item -ItemType Directory -Path (Join-Path $engineRoot 'bin'), (Join-Path $engineRoot 'utils') -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'invoke-winws.ps1') -Destination (Join-Path $engineRoot 'utils\invoke-winws.ps1')
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'bundle-operation.ps1') -Destination (Join-Path $engineRoot 'utils\bundle-operation.ps1')
     $engineSource = Join-Path $engineRoot 'FixtureEngine.cs'
     $engineCode = @'
 using System;

@@ -1,5 +1,6 @@
 # Telegram runs in the current user's interactive session. Scheduler/process
 # operations are isolated behind functions so offline tests never touch Windows.
+. (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 function Get-ZapretTelegramCurrentIdentity {
     return [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 }
@@ -378,7 +379,7 @@ function Wait-ZapretTelegramReady {
     throw "Telegram did not start on 127.0.0.1:$Port (task result $($info.LastTaskResult)).$detail See $($Context.Log)."
 }
 
-function Enable-ZapretTelegram {
+function Invoke-ZapretTelegramEnable {
     param([Parameter(Mandatory)][string]$Root, [switch]$RequireInstalled)
     $context = Get-ZapretTelegramContext $Root
     Assert-ZapretTelegramBinary $context
@@ -431,7 +432,7 @@ function Enable-ZapretTelegram {
     } finally { $lock.Dispose() }
 }
 
-function Disable-ZapretTelegram {
+function Invoke-ZapretTelegramDisable {
     param([Parameter(Mandatory)][string]$Root)
     $context = Get-ZapretTelegramContext $Root
     Initialize-ZapretTelegramRuntime $context
@@ -443,6 +444,20 @@ function Disable-ZapretTelegram {
         Write-Host '[OK] Telegram autostart and proxy stopped. Saved connection settings are preserved.' -ForegroundColor Green
         Write-Host 'Disable this proxy in Telegram: Settings > Advanced > Connection type.' -ForegroundColor Yellow
     } finally { $lock.Dispose() }
+}
+
+function Enable-ZapretTelegram {
+    param([Parameter(Mandatory)][string]$Root, [switch]$RequireInstalled)
+    $gate = Enter-ZapretBundleOperation $Root
+    try { Invoke-ZapretTelegramEnable -Root $Root -RequireInstalled:$RequireInstalled }
+    finally { Exit-ZapretBundleOperation $gate }
+}
+
+function Disable-ZapretTelegram {
+    param([Parameter(Mandatory)][string]$Root)
+    $gate = Enter-ZapretBundleOperation $Root
+    try { Invoke-ZapretTelegramDisable -Root $Root }
+    finally { Exit-ZapretBundleOperation $gate }
 }
 
 function Restart-ZapretTelegram {
@@ -597,7 +612,7 @@ function Stop-ZapretTelegramDiagnosticProcesses {
     }
 }
 
-function Invoke-ZapretTelegramDiagnostics {
+function Invoke-ZapretTelegramDiagnosticsCore {
     param([Parameter(Mandatory)][string]$Root, [ValidateRange(1, 120)][int]$TimeoutSeconds = 45)
     $context = Get-ZapretTelegramContext $Root
     Assert-ZapretTelegramBinary $context
@@ -634,4 +649,11 @@ function Invoke-ZapretTelegramDiagnostics {
         Write-Host 'Endpoint reachability does not verify your Telegram account, messages, media or calls. Test those in Telegram.' -ForegroundColor Yellow
         if ($process.ExitCode -ne 0) { throw "Telegram endpoint diagnostics reported a failure (exit $($process.ExitCode)). See $report." }
     } finally { $process.Dispose() }
+}
+
+function Invoke-ZapretTelegramDiagnostics {
+    param([Parameter(Mandatory)][string]$Root, [ValidateRange(1, 120)][int]$TimeoutSeconds = 45)
+    $gate = Enter-ZapretBundleOperation $Root
+    try { Invoke-ZapretTelegramDiagnosticsCore -Root $Root -TimeoutSeconds $TimeoutSeconds }
+    finally { Exit-ZapretBundleOperation $gate }
 }

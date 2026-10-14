@@ -46,6 +46,9 @@ jobs:
       - name: Validate automatic support reports and restoration
         shell: powershell
         run: ./utils/validate-support.ps1
+      - name: Validate release updates using local HTTP and crash fixtures
+        shell: powershell
+        run: ./utils/validate-release-update.ps1 -RequireNativeEngine
       - name: Verify pinned runtime hashes
         shell: pwsh
         run: |

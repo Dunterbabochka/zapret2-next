@@ -30,6 +30,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'bundle-operation.ps1')
+$bundleGate = Enter-ZapretBundleOperation $root
+try {
 # Keep existing service settings and command-line invocations working after renaming.
 if ($Preset -match '^CUSTOM (SAFE|BALANCED|AGGRESSIVE)$') {
     $Preset = 'NEXT ' + $matches[1].ToUpperInvariant()
@@ -303,3 +306,4 @@ if (-not (Test-Path -LiteralPath $outputDir)) {
 }
 [IO.File]::WriteAllText($outputPath, $content.Trim() + "`r`n", [Text.UTF8Encoding]::new($false))
 Write-Output $outputPath
+} finally { Exit-ZapretBundleOperation $bundleGate }

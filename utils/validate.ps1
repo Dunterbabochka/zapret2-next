@@ -73,11 +73,9 @@ if ($serviceContent -notmatch '(?m)^if exist "%ROOT%\\\.service\\version\.txt" s
     $serviceContent -match '(?m)^set "VERSION=\d') {
     Add-ValidationError 'service.bat must read its installed version from .service\version.txt instead of hard-coding it.'
 }
-if ($serviceContent -notmatch 'curl\.exe -fsSL -o NUL -w "%%\{url_effective\}"' -or
-    $serviceContent -notmatch 'findstr /I /C:"/releases/tag/"' -or
-    $serviceContent -notmatch 'findstr\.exe /R /X "\[0-9\]' -or
-    $serviceContent -match 'RAW_BASE%/\.service/version\.txt' -or
-    $serviceContent -notmatch 'VERSION_RELATION') {
+$updateContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'update-release-core.ps1') -Raw
+if ($serviceContent -notmatch 'update-release\.ps1' -or $updateContent -notmatch '/releases/latest' -or
+    $updateContent -notmatch 'Test-ReleaseNewer' -or $serviceContent -match 'RAW_BASE%/\.service/version\.txt') {
     Add-ValidationError 'Update checks must compare the installed package with the latest published GitHub Release, not the version file on main.'
 }
 $releaseBuilderPath = Join-Path $PSScriptRoot 'build-release.ps1'
@@ -94,7 +92,7 @@ if ($serviceContent -notmatch '(?m)^echo {6}13\. Run Diagnostics\r?$' -or
     $serviceContent -notmatch '(?m)^echo {6}15\. Clear Discord Cache') {
     Add-ValidationError 'The service menu items are not aligned or a required settings/tool item is missing.'
 }
-if ($serviceContent -notmatch 'Select option \(0-15\):' -or
+if ($serviceContent -notmatch '-Action ReadMenuChoice' -or
     $serviceContent -notmatch 'goto voice_filter' -or
     $serviceContent -notmatch 'goto fake_profiles' -or
     $serviceContent -notmatch 'goto clear_discord_cache' -or
@@ -153,8 +151,8 @@ if ($releaseBuilderAvailable) {
         }
     }
 }
-if ($serviceContent -notmatch 'utils\\discord_fake\.mode' -or
-    $serviceContent -notmatch 'utils\\game_fake\.mode' -or
+if ($serviceContent -notmatch 'discord_fake\.mode' -or
+    $serviceContent -notmatch 'game_fake\.mode' -or
     $serviceContent -notmatch 'call :read_fake_modes') {
     Add-ValidationError 'Service Manager must persist independent allowlisted Discord and Game fake selections.'
 }
@@ -198,7 +196,7 @@ if ($serviceContent -notmatch 'Classic presets' -or $serviceContent -notmatch 'N
     Add-ValidationError 'Service selection must expose Classic and NEXT columns and keep AGGRESSIVE private.'
 }
 $ipsetMenuBlock = [regex]::Match($serviceContent, '(?ms)^:ipset_filter\r?\n.*?(?=^:[A-Za-z_]+\r?$)').Value
-if ($ipsetMenuBlock -notmatch 'utils\\ipset_filter\.mode') {
+if ($ipsetMenuBlock -notmatch '-Action SetSetting -Name ipset_filter\.mode') {
     Add-ValidationError 'The IPSet menu must persist its selection in ipset_filter.mode.'
 }
 if ($ipsetMenuBlock -match 'newmode=any' -or $ipsetMenuBlock -notmatch '(?i)any is diagnostic') {

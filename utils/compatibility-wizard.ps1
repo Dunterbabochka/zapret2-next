@@ -33,9 +33,12 @@ if ($SimulationScenario) {
     return
 }
 
+$bundleGate = $null
 try {
+    . (Join-Path $PSScriptRoot 'bundle-operation.ps1')
+    $bundleGate = Enter-ZapretBundleOperation $root
     Invoke-CompatibilityWizard
 } catch [OperationCanceledException] {
     Write-Host "Canceled by user: $($_.Exception.Message)" -ForegroundColor Yellow
     exit 2
-}
+} finally { Exit-ZapretBundleOperation $bundleGate }

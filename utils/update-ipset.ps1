@@ -6,14 +6,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'ipset-utils.ps1')
+. (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if (-not $Destination) { $Destination = Join-Path $root 'lists\ipset-all.txt' }
 $destinationPath = [IO.Path]::GetFullPath($Destination)
 $bundledPath = Join-Path $root '.service\ipset-service.txt'
 $temporaryPath = $destinationPath + '.' + [Guid]::NewGuid().ToString('N') + '.download'
 $lock = $null
+$bundleGate = $null
 
 try {
+    $bundleGate = Enter-ZapretBundleOperation $root
     # The OS releases this lock on a crash. Never unlink a possibly open lock.
     $lock = [IO.File]::Open($destinationPath + '.lock', 'OpenOrCreate', 'ReadWrite', 'None')
     $sourceLabel = 'bundled snapshot'
@@ -55,5 +58,6 @@ try {
 } finally {
     Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
     if ($lock) { $lock.Dispose() }
+    Exit-ZapretBundleOperation $bundleGate
 }
 exit 0

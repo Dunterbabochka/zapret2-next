@@ -12,6 +12,7 @@ param(
 . (Join-Path $PSScriptRoot 'service-control.ps1')
 . (Join-Path $PSScriptRoot 'support-diagnostics-core.ps1')
 
+$bundleGate = $null
 try {
     Write-Host 'Automatic support report / Автоматический отчёт' -ForegroundColor Cyan
     if ([string]::IsNullOrWhiteSpace($Provider)) {
@@ -19,6 +20,7 @@ try {
         $RegionCity = (Read-Host 'Область или город (желательно; Enter = пропустить, q = отмена)').Trim()
         if ($RegionCity -match '^(?i:q|quit|cancel)$') { throw [OperationCanceledException]::new() }
     }
+    $bundleGate = Enter-ZapretBundleOperation $root
     $artifact = Invoke-SupportDiagnostics -Provider $Provider -RegionCity $RegionCity
     if ($artifact.Status -eq 'blocked') {
         Write-Host 'Стратегии пока не проверялись. Устраните указанные причины и повторите проверку; результат также записан в отчёт.' -ForegroundColor Yellow
@@ -36,4 +38,4 @@ try {
 } catch {
     Write-Host 'Не удалось сохранить отчёт. Проверьте доступ к папке runtime/support-reports и свободное место.' -ForegroundColor Red
     exit 1
-}
+} finally { Exit-ZapretBundleOperation $bundleGate }

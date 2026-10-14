@@ -13,7 +13,11 @@ set "RAW_BASE=https://raw.githubusercontent.com/%REPO_SLUG%/main"
 set "RELEASE_URL=https://github.com/%REPO_SLUG%/releases"
 
 if /I "%~1"=="check_updates" (
-  call :check_updates %~2
+  if /I "%~2"=="soft" (
+    if exist "%ROOT%\utils\check_updates.enabled" start "" /b powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action Check -Quiet >nul 2>&1
+  ) else (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action Check -Force
+  )
   exit /b
 )
 
@@ -25,6 +29,19 @@ if errorlevel 1 (
 )
 
 mode con: cols=110 lines=40 >nul 2>&1
+if exist "%ROOT%\runtime\release-update\recovery-needed" (
+  call :recover_update
+  if errorlevel 1 exit /b 1
+)
+if exist "%ROOT%\runtime\release-update\cleanup-pending" (
+  call :recover_update
+  if errorlevel 1 exit /b 1
+)
+if exist "%ROOT%\.service\version.txt" set /p VERSION=<"%ROOT%\.service\version.txt"
+
+if exist "%ROOT%\.service\repository.txt" set /p REPO_SLUG=<"%ROOT%\.service\repository.txt"
+set "RAW_BASE=https://raw.githubusercontent.com/%REPO_SLUG%/main"
+set "RELEASE_URL=https://github.com/%REPO_SLUG%/releases"
 
 :menu
 call :read_status
@@ -64,7 +81,20 @@ echo   -----------------------------------------------
 echo       0. Exit
 echo.
 set "choice="
-set /p "choice=   Select option (0-15): "
+if not defined UPDATE_CHECK_STARTED (
+  set "UPDATE_CHECK_STARTED=1"
+  if exist "%ROOT%\utils\check_updates.enabled" start "" /b powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action Check -Quiet >nul 2>&1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action ReadMenuChoice
+set "choice=!errorlevel!"
+if "!choice!"=="211" goto update_release
+if !choice! LSS 100 (
+  call :red "Could not read the menu selection."
+  pause
+  goto menu
+)
+if !choice! GTR 115 goto menu
+set /a choice-=100
 if "!choice!"=="1" goto install_service
 if "!choice!"=="2" goto remove_service
 if "!choice!"=="3" goto show_status
@@ -257,7 +287,8 @@ if "!mode!"=="1" set "newmode=all"
 if "!mode!"=="2" set "newmode=tcp"
 if "!mode!"=="3" set "newmode=udp"
 if not defined newmode goto invalid_choice
->"%ROOT%\utils\game_filter.mode" echo(!newmode!
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action SetSetting -Name game_filter.mode -Value "!newmode!"
+if errorlevel 1 goto menu
 call :refresh_service_config
 pause
 goto menu
@@ -270,7 +301,8 @@ if /I "!IPSET_MODE!"=="loaded" (
 ) else (
   set "newmode=loaded"
 )
->"%ROOT%\utils\ipset_filter.mode" echo(!newmode!
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action SetSetting -Name ipset_filter.mode -Value "!newmode!"
+if errorlevel 1 goto menu
 call :green "IPSet mode changed: !IPSET_MODE! -^> !newmode!"
 call :yellow "IPSet any is diagnostic-only and is not available as a persistent service mode."
 call :refresh_service_config
@@ -291,7 +323,8 @@ if "!mode!"=="1" set "newmode=standard"
 if "!mode!"=="2" set "newmode=compatible"
 if not defined newmode goto invalid_choice
 call :read_voice_mode
->"%ROOT%\utils\voice_filter.mode" echo(!newmode!
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action SetSetting -Name voice_filter.mode -Value "!newmode!"
+if errorlevel 1 goto menu
 call :green "Discord Voice mode changed: !VOICE_MODE! -^> !newmode!"
 call :refresh_service_config
 pause
@@ -344,13 +377,15 @@ if "!fake_choice!"=="6" (
   set "fake_value=steam"
 )
 if "!fake_choice!"=="7" (
-  >"%ROOT%\utils\discord_fake.mode" echo(current
-  >"%ROOT%\utils\game_fake.mode" echo(current
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action SetSetting -Name fake-defaults -Value current
+  if errorlevel 1 goto menu
   set "fake_kind=both"
 )
 if not defined fake_kind goto invalid_choice
-if /I "!fake_kind!"=="discord" >"%ROOT%\utils\discord_fake.mode" echo(!fake_value!
-if /I "!fake_kind!"=="game" >"%ROOT%\utils\game_fake.mode" echo(!fake_value!
+if /I "!fake_kind!"=="discord" powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action SetSetting -Name discord_fake.mode -Value "!fake_value!"
+if errorlevel 1 goto menu
+if /I "!fake_kind!"=="game" powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action SetSetting -Name game_fake.mode -Value "!fake_value!"
+if errorlevel 1 goto menu
 call :read_fake_modes
 call :green "UDP fake profiles: Discord=!DISCORD_FAKE!, Game=!GAME_FAKE!"
 call :yellow "Experimental fakes can help or break connectivity; verify Discord Voice and the affected game after switching."
@@ -381,13 +416,8 @@ call :read_telegram_status
 goto menu
 
 :update_toggle
-if exist "%ROOT%\utils\check_updates.enabled" (
-  del /q "%ROOT%\utils\check_updates.enabled"
-  call :yellow "Automatic update checks disabled."
-) else (
-  >"%ROOT%\utils\check_updates.enabled" echo enabled
-  call :green "Automatic update checks enabled."
-)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action ToggleCheck
+set "UPDATE_CHECK_STARTED="
 pause
 goto menu
 
@@ -432,36 +462,26 @@ pause
 goto menu
 
 :check_updates
-if /I "%~1"=="soft" if not exist "%ROOT%\utils\check_updates.enabled" exit /b 0
-call :require_repository
-if errorlevel 1 exit /b 1
-set "REMOTE_VERSION="
-set "LATEST_RELEASE_URL="
-for /f "usebackq delims=" %%U in (`curl.exe -fsSL -o NUL -w "%%{url_effective}" --connect-timeout 4 --max-time 10 "%RELEASE_URL%/latest" 2^>nul ^| findstr /I /C:"/releases/tag/"`) do set "LATEST_RELEASE_URL=%%U"
-if defined LATEST_RELEASE_URL for %%V in ("!LATEST_RELEASE_URL!") do set "REMOTE_VERSION=%%~nxV"
-if /I "!REMOTE_VERSION:~0,1!"=="v" set "REMOTE_VERSION=!REMOTE_VERSION:~1!"
-set "VALID_REMOTE_VERSION="
-for /f "delims=" %%V in ('echo(!REMOTE_VERSION! ^| findstr.exe /R /X "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"') do set "VALID_REMOTE_VERSION=%%V"
-set "REMOTE_VERSION=!VALID_REMOTE_VERSION!"
-if not defined REMOTE_VERSION (
-  if /I not "%~1"=="soft" call :yellow "Could not check for updates."
-) else (
-set "Z2_LOCAL_VERSION=%VERSION%"
-set "Z2_REMOTE_VERSION=!REMOTE_VERSION!"
-set "VERSION_RELATION=unknown"
-for /f "usebackq delims=" %%R in (`powershell -NoProfile -Command "try { $localText=$env:Z2_LOCAL_VERSION; $remoteText=$env:Z2_REMOTE_VERSION; $local=[version](($localText -split '-',2)[0]); $remote=[version](($remoteText -split '-',2)[0]); if ($remote -gt $local) { 'remote-newer' } elseif ($local -gt $remote) { 'local-newer' } elseif ($localText -eq $remoteText) { 'equal' } elseif ($localText.Contains('-') -and -not $remoteText.Contains('-')) { 'remote-newer' } else { 'local-newer' } } catch { 'unknown' }"`) do set "VERSION_RELATION=%%R"
-if /I "!VERSION_RELATION!"=="equal" (
-  if /I not "%~1"=="soft" call :green "You are using the latest version (%VERSION%)."
-) else if /I "!VERSION_RELATION!"=="remote-newer" (
-  call :yellow "A new version is available: !REMOTE_VERSION! (installed: %VERSION%)"
-  echo Releases: %RELEASE_URL%
-) else if /I "!VERSION_RELATION!"=="local-newer" (
-  if /I not "%~1"=="soft" call :yellow "Installed version %VERSION% is newer than the latest published release !REMOTE_VERSION!."
-) else (
-  if /I not "%~1"=="soft" call :yellow "Could not compare installed version %VERSION% with published version !REMOTE_VERSION!."
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action Check -Force
+exit /b
+
+:update_release
+cls
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\utils\update-release.ps1" -Action Prepare -Launch
+if errorlevel 1 (
+  pause
+  goto menu
 )
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\runtime\release-update\recovery\update-release.ps1" -Action ReleaseMenu -Root "%ROOT%"
+exit /b
+
+:recover_update
+if not exist "%ROOT%\runtime\release-update\recovery\update-release.ps1" (
+  echo [ERROR] Recovery worker is missing. Restore the original release before continuing.
+  exit /b 1
 )
-exit /b 0
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\runtime\release-update\recovery\update-release.ps1" -Action Recover -Root "%ROOT%"
+exit /b %errorlevel%
 
 :diagnostics
 cls

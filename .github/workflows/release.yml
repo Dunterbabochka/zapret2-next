@@ -37,6 +37,9 @@ jobs:
       - name: Validate automatic support reports
         shell: powershell
         run: ./utils/validate-support.ps1
+      - name: Validate release updates using local HTTP and crash fixtures
+        shell: powershell
+        run: ./utils/validate-release-update.ps1 -RequireNativeEngine
       - name: Detect release channel
         id: release_meta
         shell: pwsh

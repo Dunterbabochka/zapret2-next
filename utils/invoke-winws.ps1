@@ -18,6 +18,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 $winws = Join-Path $root 'bin\winws2.exe'
 $configPath = [IO.Path]::GetFullPath($Config)
 $logBase = [IO.Path]::GetFullPath($LogPrefix)
@@ -63,8 +64,10 @@ if (-not (Test-Path -LiteralPath $logDir)) {
 }
 
 $launchLock = $null
+$bundleGate = $null
 if (-not $Validate) {
     try {
+        $bundleGate = Enter-ZapretBundleOperation $root
         $launchLock = [IO.File]::Open((Join-Path $root 'runtime\engine-operation.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
         $services = @(Get-CimInstance Win32_Service -Filter "Name='winws2' OR Name='zapret'" -ErrorAction Stop)
         if (@($services | Where-Object { $_.State -ne 'Stopped' }).Count) {
@@ -83,6 +86,7 @@ if (-not $Validate) {
         }
     } catch {
         if ($launchLock) { $launchLock.Dispose() }
+        Exit-ZapretBundleOperation $bundleGate
         Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
         exit 15
     }
@@ -96,6 +100,7 @@ try {
     $null = $process.Handle
 } catch {
     if ($launchLock) { $launchLock.Dispose() }
+    Exit-ZapretBundleOperation $bundleGate
     Write-Host "[ERROR] Could not launch winws2: $($_.Exception.Message)" -ForegroundColor Red
     Show-EngineLog
     exit 12
@@ -131,6 +136,7 @@ if ($Validate) {
 Start-Sleep -Seconds $StartupWaitSeconds
 $process.Refresh()
 if ($launchLock) { $launchLock.Dispose() }
+Exit-ZapretBundleOperation $bundleGate
 if ($process.HasExited) {
     $process.WaitForExit()
     $process.Refresh()

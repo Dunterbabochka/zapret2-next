@@ -55,7 +55,7 @@ $topFiles = @(
 )
 $dirs = @('bin','lua','lists','presets','utils','strategies','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
-$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md', 'ADVANCED.md', 'MAINTAINING.md', 'SUPPORT.md')
+$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md', 'ADVANCED.md', 'MAINTAINING.md', 'SUPPORT.md', 'UPDATING.md')
 New-Item -ItemType Directory -Path (Join-Path $stage 'docs') -Force | Out-Null
 foreach ($document in $publicDocs) {
     Copy-Item -LiteralPath (Join-Path $root ('docs\' + $document)) -Destination (Join-Path $stage 'docs') -Force
@@ -105,6 +105,7 @@ foreach ($sourceOnlyPath in @(
     'utils\configure-repository.ps1',
     'utils\sync-upstream-ipset.ps1',
     'utils\test-custom-presets.ps1',
+    'utils\validate-release-update.ps1',
     'lists\ipset-all.txt.backup'
 )) {
     Remove-Item (Join-Path $stage $sourceOnlyPath) -Force -ErrorAction SilentlyContinue
@@ -120,6 +121,12 @@ $releaseModes = @{
 }
 foreach ($entry in $releaseModes.GetEnumerator()) {
     [IO.File]::WriteAllText((Join-Path $stage ('utils\' + $entry.Key)), $entry.Value + "`r`n", [Text.Encoding]::ASCII)
+}
+# Fresh installations check releases by default. Updates preserve the user's
+# enabled/disabled marker independently of the packaged default.
+[IO.File]::WriteAllText((Join-Path $stage 'utils\check_updates.enabled'), "enabled`r`n", [Text.Encoding]::ASCII)
+foreach ($updater in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $stage ('utils\'+$updater)) -PathType Leaf)) { throw "Missing release update component: $updater" }
 }
 foreach ($experimentalPreset in @(
     'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',

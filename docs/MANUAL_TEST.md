@@ -36,6 +36,7 @@ the wizard self-test simulates 13 outcomes without changing live services.
 
 ## 4. Update safety
 
+0. Run `utils/validate-release-update.ps1` for local HTTP, rollback, abrupt-process-exit and native console checks. For real service/Telegram smoke testing on a disposable Windows 10/11 VM, follow the local update lab instructions in `MAINTAINING.md`; no GitHub release is needed.
 1. Check for updates while online and then while disconnected.
 2. Select Update IPSet List offline. A failed or partial download must use a validated bundled snapshot. An invalid candidate or a shrink of more than 50% must preserve the prior list; successful replacement must keep its bytes in `.backup`.
 3. Select Update Hosts File and verify that it only opens a suggested file; it must not modify the system hosts file.

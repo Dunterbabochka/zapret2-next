@@ -1,4 +1,5 @@
 # Service operations are kept separate so rollback can be tested without SCM.
+. (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 function Get-ZapretServiceSnapshot {
     $service = Get-CimInstance Win32_Service -Filter "Name='winws2'" -ErrorAction Stop
     if (-not $service) { return $null }
@@ -90,8 +91,10 @@ function Remove-ZapretServiceConfiguration {
     param([string]$Root)
     $runtime = Join-Path $Root 'runtime'
     New-Item -ItemType Directory -Path $runtime -Force | Out-Null
-    $lock = [IO.File]::Open((Join-Path $runtime 'engine-operation.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+    $lock = $null; $bundleGate = $null
     try {
+        $bundleGate = Enter-ZapretBundleOperation $Root
+        $lock = [IO.File]::Open((Join-Path $runtime 'engine-operation.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
         $snapshot = Get-ZapretServiceSnapshot
         $config = Join-Path $runtime 'service.txt'
         $image = '"' + (Join-Path $Root 'bin\winws2.exe') + '" @"' + $config + '"'
@@ -102,7 +105,8 @@ function Remove-ZapretServiceConfiguration {
         Remove-Item -LiteralPath $config -Force -ErrorAction SilentlyContinue
         Write-Host '[OK] Zapret 2 NEXT service removed.' -ForegroundColor Green
     } finally {
-        $lock.Dispose()
+        if ($lock) { $lock.Dispose() }
+        Exit-ZapretBundleOperation $bundleGate
     }
 }
 
@@ -117,7 +121,9 @@ function Set-ZapretServiceConfiguration {
     $changed = $false
     $registrationChanged = $false
     $stopped = $false
+    $bundleGate = $null
     try {
+        $bundleGate = Enter-ZapretBundleOperation $Root
         $lock = [IO.File]::Open((Join-Path $runtime 'engine-operation.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
         $snapshot = Get-ZapretServiceSnapshot
         if (-not $Install -and -not $snapshot) { throw 'The winws2 service is not installed.' }
@@ -165,5 +171,6 @@ function Set-ZapretServiceConfiguration {
     } finally {
         Remove-Item -LiteralPath $candidate -Force -ErrorAction SilentlyContinue
         if ($lock) { $lock.Dispose() }
+        Exit-ZapretBundleOperation $bundleGate
     }
 }

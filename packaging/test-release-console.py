@@ -1,0 +1,215 @@
+"""Exercise cmd.exe and actual console input in an isolated hidden console.
+
+Only the fixture's status/actions and HTTP boundary are substituted. No live
+service queries, service changes, desktop keyboard input or GitHub requests.
+"""
+import argparse
+import ctypes
+from ctypes import wintypes as w
+import json
+import re
+import shutil
+import subprocess
+import time
+import uuid
+from pathlib import Path
+
+
+kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+
+
+class Coord(ctypes.Structure):
+    _fields_ = [("X", w.SHORT), ("Y", w.SHORT)]
+
+
+class Rect(ctypes.Structure):
+    _fields_ = [("Left", w.SHORT), ("Top", w.SHORT), ("Right", w.SHORT), ("Bottom", w.SHORT)]
+
+
+class BufferInfo(ctypes.Structure):
+    _fields_ = [("size", Coord), ("cursor", Coord), ("attributes", w.WORD), ("window", Rect), ("maxsize", Coord)]
+
+
+class KeyEvent(ctypes.Structure):
+    _fields_ = [("down", w.BOOL), ("repeat", w.WORD), ("virtual", w.WORD), ("scan", w.WORD), ("char", w.WCHAR), ("control", w.DWORD)]
+
+
+class Event(ctypes.Union):
+    _fields_ = [("key", KeyEvent), ("padding", ctypes.c_byte * 16)]
+
+
+class InputRecord(ctypes.Structure):
+    _fields_ = [("kind", w.WORD), ("event", Event)]
+
+
+kernel.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, w.LPVOID, w.DWORD, w.DWORD, w.HANDLE]
+kernel.CreateFileW.restype = w.HANDLE
+kernel.AttachConsole.argtypes = [w.DWORD]
+kernel.AttachConsole.restype = w.BOOL
+kernel.GetConsoleScreenBufferInfo.argtypes = [w.HANDLE, ctypes.POINTER(BufferInfo)]
+kernel.ReadConsoleOutputCharacterW.argtypes = [w.HANDLE, w.LPWSTR, w.DWORD, Coord, ctypes.POINTER(w.DWORD)]
+kernel.WriteConsoleInputW.argtypes = [w.HANDLE, ctypes.POINTER(InputRecord), w.DWORD, ctypes.POINTER(w.DWORD)]
+kernel.CloseHandle.argtypes = [w.HANDLE]
+
+
+class Console:
+    def __init__(self, command):
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.wShowWindow = 0
+        self.process = subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=startup)
+        kernel.FreeConsole()
+        deadline = time.monotonic() + 5
+        while not kernel.AttachConsole(self.process.pid):
+            if self.process.poll() is not None or time.monotonic() > deadline:
+                raise RuntimeError("Could not attach to the isolated test console")
+            time.sleep(0.025)
+        self.output = kernel.CreateFileW("CONOUT$", 0x80000000, 3, None, 3, 0, None)
+        self.input = kernel.CreateFileW("CONIN$", 0xC0000000, 3, None, 3, 0, None)
+
+    def text(self):
+        info = BufferInfo()
+        if not kernel.GetConsoleScreenBufferInfo(self.output, ctypes.byref(info)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        length = min(info.size.X * info.size.Y, 100_000)
+        buffer = ctypes.create_unicode_buffer(length)
+        read = w.DWORD()
+        if not kernel.ReadConsoleOutputCharacterW(self.output, buffer, length, Coord(0, 0), ctypes.byref(read)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return buffer[:read.value]
+
+    def wait_text(self, expected, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if expected in self.text():
+                return
+            if self.process.poll() is not None:
+                break
+            time.sleep(0.025)
+        raise AssertionError(f"Console did not show {expected!r}: {self.text()!r}")
+
+    def type(self, text):
+        records = (InputRecord * (len(text) * 2))()
+        for index, char in enumerate(text):
+            for offset, down in enumerate((True, False)):
+                record = records[index * 2 + offset]
+                record.kind = 1
+                record.event.key = KeyEvent(down, 1, 13 if char == "\r" else ord(char.upper()), 0, char, 0)
+        written = w.DWORD()
+        if not kernel.WriteConsoleInputW(self.input, records, len(records), ctypes.byref(written)):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def close(self):
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait()
+        kernel.CloseHandle(self.output)
+        kernel.CloseHandle(self.input)
+        kernel.FreeConsole()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--source", type=Path, required=True)
+    parser.add_argument("--port", required=True)
+    args = parser.parse_args()
+    fixture = args.root / ("Console install with spaces " + uuid.uuid4().hex[:8])
+    fixture.mkdir()
+    shutil.copytree(args.source / "utils", fixture / "utils")
+    shutil.copytree(args.source / ".service", fixture / ".service")
+    (fixture / ".service" / "version.txt").write_text("9.9.0", encoding="ascii")
+    service = (args.source / "service.bat").read_text(encoding="utf-8-sig")
+    start = service.index("\nfltmc ")
+    end = service.index("\nmode con:", start)
+    service = service[:start] + service[end:]
+    service = re.sub(r"(?ms)^:read_status\n.*?(?=^:read_settings\n)",
+                     ":read_status\nset \"CURRENT_PRESET=general\"\nset \"SERVICE_STATUS=Stopped\"\nset \"TELEGRAM_STATUS=DISABLED\"\ncall :read_settings\nexit /b\n\n", service)
+    labels = {"install_service": 1, "remove_service": 2, "show_status": 3, "game_filter": 4,
+              "ipset_filter": 5, "update_toggle": 6, "voice_filter": 7, "fake_profiles": 8,
+              "telegram": 9, "update_ipset": 10, "update_hosts": 11, "manual_update_check": 12,
+              "diagnostics": 13, "tests": 14, "clear_discord_cache": 15, "update_release": 111}
+    for label, result in labels.items():
+        service = re.sub(r"(?ms)^:" + label + r"\n.*?(?=^:[a-z_]+\n|\Z)",
+                         f":{label}\necho TEST-ACTION-{result}\nexit /b {result}\n\n", service)
+    (fixture / "service.bat").write_bytes(service.replace("\n", "\r\n").encode("utf-8"))
+    script_path = fixture / "utils" / "update-release.ps1"
+    script = script_path.read_text(encoding="utf-8-sig")
+    insertion = ". (Join-Path $PSScriptRoot 'update-release-state.ps1')"
+    boundary = """
+function Get-ReleaseHttpTarget([string]$Url) {
+    if ($Url -like 'https://api.github.com/*') { $path='/release' }
+    else { $path='/assets/'+([Uri]$Url).Segments[-1] }
+    [pscustomobject]@{Url=('http://127.0.0.1:PORT'+$path);Protocol='http'}
+}
+""".replace("PORT", args.port)
+    script_path.write_text(script.replace(insertion, insertion + boundary), encoding="utf-8-sig")
+    scenario = args.root / "scenario.json"
+    scenario.write_text(json.dumps({"mode": "ok", "delay": 10}), encoding="utf-8")
+    enabled = fixture / "utils" / "check_updates.enabled"
+    enabled.write_text("enabled", encoding="ascii")
+    command = ["cmd.exe", "/d", "/c", str(fixture / "service.bat")]
+    # The production timeout is 10 seconds too, so a 10-second fixture response
+    # intentionally times out. First prove that this never holds up the menu.
+    console = Console(command)
+    try:
+        started = time.monotonic()
+        console.wait_text("Select option (0-15):", timeout=8)
+        assert time.monotonic() - started < 8, "Menu waited for the 10-second API response"
+        console.type("0\r")
+        assert console.process.wait(timeout=5) == 0
+        assert time.monotonic() - started < 8, "Exit waited for the background HTTP request"
+    finally:
+        console.close()
+    check = fixture / "runtime" / "release-update" / "check.json"
+    deadline = time.monotonic() + 15
+    while not check.exists():
+        assert time.monotonic() < deadline, "Background timeout did not finish"
+        time.sleep(0.05)
+    assert json.loads(check.read_text(encoding="utf-8-sig"))["Status"] == "unavailable"
+    check.unlink()
+    scenario.write_text(json.dumps({"mode": "ok", "delay": 2}), encoding="utf-8")
+    console = Console(command)
+    try:
+        console.wait_text("Select option (0-15):", timeout=8)
+        console.type("1")
+        console.wait_text("Доступна новая версия 9.9.1", timeout=10)
+        console.type("11\r")
+        assert console.process.wait(timeout=5) == 111, "Notification lost the first typed digit"
+        assert "TEST-ACTION-111" in console.text()
+        print("[OK] cmd.exe menu accepts input during a delayed check; notification preserves 111")
+    finally:
+        console.close()
+    scenario.write_text(json.dumps({"mode": "ok"}), encoding="utf-8")
+    enabled.unlink()
+    if check.exists():
+        check.unlink()
+    requests = (args.root / "requests.txt").read_text(encoding="utf-8")
+    for choice in (0, 1, 10, 15):
+        console = Console(command)
+        try:
+            console.wait_text("Select option (0-15):")
+            console.type(f"{choice}\r")
+            assert console.process.wait(timeout=5) == choice
+        finally:
+            console.close()
+    assert (args.root / "requests.txt").read_text(encoding="utf-8") == requests, "Disabled auto-check made requests"
+    helper = fixture / "read-choice.bat"
+    helper.write_text(f'@echo off\npowershell -NoProfile -ExecutionPolicy Bypass -File "{script_path}" -Action ReadMenuChoice\nexit /b %errorlevel%\n', encoding="ascii")
+    for choice in ("0", "10", "111", "999"):
+        result = subprocess.run(["cmd.exe", "/d", "/c", str(helper)], input=choice + "\n", text=True, capture_output=True, timeout=10)
+        assert result.returncode == (255 if choice == "999" else 100 + int(choice)), result.stderr
+    saved_script = script_path.read_bytes()
+    script_path.write_text("throw 'Injected input helper failure'", encoding="utf-8-sig")
+    console = Console(command)
+    try:
+        console.wait_text("Could not read the menu selection.")
+        assert "TEST-ACTION-1" not in console.text(), "Helper error dispatched Install Service"
+    finally:
+        console.close()
+        script_path.write_bytes(saved_script)
+    print("[OK] ordinary menu actions, disabled auto-check and redirected cmd.exe input")
+
+
+if __name__ == "__main__":
+    main()
