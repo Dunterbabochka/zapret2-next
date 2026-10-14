@@ -150,7 +150,11 @@ function Get-ReleaseHttpTarget([string]$Url) {
     scenario.write_text(json.dumps({"mode": "ok", "delay": 10}), encoding="utf-8")
     enabled = fixture / "utils" / "check_updates.enabled"
     enabled.write_text("enabled", encoding="ascii")
-    command = ["cmd.exe", "/d", "/c", str(fixture / "service.bat")]
+    # Reproduce the English Windows runner even on a Russian developer PC.
+    # The real input helper must preserve Cyrillic notifications and typed 111.
+    wrapper = fixture / "english-console.bat"
+    wrapper.write_text('@echo off\nchcp 437 >nul\ncall "%~dp0service.bat"\nexit /b %errorlevel%\n', encoding="ascii")
+    command = ["cmd.exe", "/d", "/c", str(wrapper)]
     # The production timeout is 10 seconds too, so a 10-second fixture response
     # intentionally times out. First prove that this never holds up the menu.
     console = Console(command)

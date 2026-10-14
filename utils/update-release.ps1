@@ -38,6 +38,9 @@ function Get-ReleaseMenuBanner([string]$Root) {
 }
 function Read-ReleaseMenuChoice([string]$Root) {
     $prompt = '   Select option (0-15): '
+    # PowerShell 5.1 otherwise encodes Console.Write text in the OEM code page;
+    # English Windows replaces the Cyrillic update notification with '?'.
+    if (-not [Console]::IsOutputRedirected) { [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false) }
     if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) {
         $banner = Get-ReleaseMenuBanner $Root
         if ($banner) { [Console]::WriteLine($banner) }
