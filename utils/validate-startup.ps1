@@ -107,6 +107,48 @@ Assert-Startup ($script:refreshes.Count -eq $count) 'Cancel applied a setting'
 $script:answers.Enqueue('11');$script:answers.Enqueue('Y');Install-ZapretMenuService
 Assert-Startup ($script:refreshes[$script:refreshes.Count-1].Preset -eq 'NEXT BALANCED' -and $script:refreshes[$script:refreshes.Count-1].Install) 'Preset mapping or install confirmation changed'
 
+# Discover local templates without changing the shipped contract or selecting
+# a different strategy when a shipped template is missing.
+$customNames=@(1..90 | ForEach-Object { 'LOCAL {0:000}' -f $_ })
+$customPaths=@($customNames | ForEach-Object { Join-Path $fixture ('presets\'+$_+'.txt.in') })
+$invalidPath=Join-Path $fixture 'presets\invalid.name.txt.in'
+try {
+    foreach ($path in @($customPaths + $invalidPath)) { [IO.File]::WriteAllText($path,'# discovery fixture; never launched') }
+    Assert-Startup ($publicPresets.Count -eq 11) 'Local presets changed the wizard/release contract'
+    $menuPresets=@(Get-ZapretMenuPresets)
+    Assert-Startup ((($menuPresets | Select-Object -First 11) -join ',') -ceq ($publicPresets -join ',')) 'Shipped preset numbering changed'
+    Assert-Startup (@(Get-ZapretCustomPresets).Count -eq 90) 'Local discovery included a template, hidden strategy or unsupported name'
+    $script:answers.Enqueue('0')
+    $menuLines=@(Install-ZapretMenuService 6>&1 | ForEach-Object { [string]$_ })
+    Assert-Startup ([bool]($menuLines -match '23\. LOCAL 012') -and [bool]($menuLines -match '101\. LOCAL 090')) 'Long custom column was truncated or misnumbered'
+    foreach ($case in @(@{Pick='12';Name='LOCAL 001'},@{Pick='23';Name='LOCAL 012'},@{Pick='101';Name='LOCAL 090'})) {
+        $script:answers.Enqueue($case.Pick);$script:answers.Enqueue('Y')
+        Install-ZapretMenuService 6>&1 | Out-Null
+        Assert-Startup ($script:refreshes[$script:refreshes.Count-1].Preset -ceq $case.Name) 'Displayed custom number selected a different preset'
+    }
+    $count=$script:refreshes.Count
+    foreach ($pick in @('102','2147483648','not-a-number')) {
+        $script:answers.Enqueue($pick)
+        $rejected=$false
+        try { Install-ZapretMenuService 6>&1 | Out-Null } catch { $rejected=$_.Exception.Message -eq 'Invalid preset selection.' }
+        Assert-Startup ($rejected -and $script:refreshes.Count -eq $count) 'Invalid custom selection reached service installation'
+    }
+    $missing=Join-Path $fixture 'presets\ALT3.txt.in'
+    $backup=$missing+'.missing-test'
+    Move-Item -LiteralPath $missing -Destination $backup
+    try {
+        Assert-Startup (@(Get-ZapretMenuPresets)[2] -ceq 'ALT3') 'Missing shipped file shifted the menu catalogue'
+        $rejected=$false
+        try { Install-ZapretMenuService 6>&1 | Out-Null } catch { $rejected=$_.Exception.Message -eq 'Missing preset: ALT3' }
+        Assert-Startup ($rejected -and $script:refreshes.Count -eq $count) 'Missing shipped template allowed an incorrect selection'
+    } finally { Move-Item -LiteralPath $backup -Destination $missing }
+} finally {
+    foreach ($path in @($customPaths + $invalidPath)) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+$menuPath=Join-Path $fixture 'utils\menu.ps1'
+$menuBytes=[IO.File]::ReadAllBytes($menuPath)
+Assert-Startup ($menuBytes[0] -eq 239 -and $menuBytes[1] -eq 187 -and $menuBytes[2] -eq 191 -and [IO.File]::ReadAllText($menuPath).Contains('Архив логов')) 'Menu encoding lost its portable Cyrillic label'
+
 # Run the production engine coordinator with only the native process boundary
 # replaced. No running strategy or Telegram task is stopped by these cases.
 & {

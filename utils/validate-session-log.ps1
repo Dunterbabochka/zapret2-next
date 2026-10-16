@@ -58,6 +58,36 @@ try {
     Assert-Log ($LASTEXITCODE -eq 0) 'CLI Finish failed'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli -Action Export -NoReveal
     Assert-Log ($LASTEXITCODE -eq 0 -and @(Get-ChildItem (Join-Path $cliRoot 'runtime\logs\exports') -Filter '*.zip').Count -eq 1) 'CLI Export default Root failed'
+    # A filename is user input even when it names a real local preset. Exercise
+    # both initial writes and sanitizing already-stored events during export.
+    & {
+        $privacyRoot=Join-Path $fixture 'Local preset privacy'
+        [IO.Directory]::CreateDirectory((Join-Path $privacyRoot 'utils')) | Out-Null
+        [IO.Directory]::CreateDirectory((Join-Path $privacyRoot 'presets')) | Out-Null
+        $logger=Join-Path $privacyRoot 'utils\session-log.ps1'
+        Copy-Item -LiteralPath (Join-Path $source 'utils\session-log.ps1') -Destination $logger
+        . $logger
+        $presetName='PRIVATE_TOKEN_123'
+        $presetPath=Join-Path $privacyRoot ('presets\'+$presetName+'.txt.in')
+        [IO.File]::WriteAllText($presetPath,'# synthetic preset')
+        New-LogTestSession $privacyRoot
+        Write-ZapretLogEvent -Details @{preset=$presetName}
+        Write-ZapretLogEvent -Details @{preset='general'}
+        Complete-ZapretLogOperation
+        $eventPath=Join-Path $script:ZapretLog.Directory 'events.jsonl'
+        Assert-Log (-not [IO.File]::ReadAllText($eventPath).Contains($presetName)) 'Local preset name leaked during journal write'
+        $text=Read-LogArchive (Export-ZapretSessionLogs -Root $privacyRoot -Archive)
+        Assert-Log (-not $text.Contains($presetName) -and $text.Contains('CUSTOM') -and $text.Contains('general')) 'Preset export lost privacy or shipped names without templates'
+        $stored=@((Get-ZapretLogSnapshot $privacyRoot).Events | Where-Object { $_.details.preset -eq 'CUSTOM' })[0]
+        $stored.eventId=[guid]::NewGuid().ToString('N')
+        $stored.details.preset=$presetName
+        [IO.File]::AppendAllText($eventPath,(ConvertTo-Json -InputObject $stored -Depth 8 -Compress)+"`r`n")
+        $text=Read-LogArchive (Export-ZapretSessionLogs -Root $privacyRoot -Archive)
+        Assert-Log (-not $text.Contains($presetName)) 'Existing local preset name escaped export sanitization'
+        Remove-Item -LiteralPath $presetPath
+        $text=Read-LogArchive (Export-ZapretSessionLogs -Root $privacyRoot -Archive)
+        Assert-Log ($text.Contains('CUSTOM') -and $text.Contains('general')) 'Recovery export depends on preset files still being present'
+    }
     $testRoot=Join-Path $fixture 'Install with spaces'
     New-LogTestSession $testRoot
     $first=$script:ZapretLog.Id

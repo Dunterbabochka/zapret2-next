@@ -38,3 +38,11 @@ Both strategies are translated from the local Windows reference 1.10.3. Their pa
 | Game UDP | Selected Game fake x10 | 4pda + selected Game fakes x5 |
 
 Voice `standard` and `off` retain their shared behavior. Game ports stay at the disabled port-12 sentinel unless explicitly enabled. The additional functions are loaded only by presets that need them; the pinned upstream Lua files are unchanged.
+
+## Local presets
+
+Add a trusted `presets\<NAME>.txt.in` template to show it automatically in the service menu's `Custom / other` column. Names may contain Latin letters, digits, spaces, underscores and hyphens. An optional `strategies\general (<NAME>).bat` launcher must call `utils\run-preset.bat` with that same name. Templates can initialize Lua, so their contents must be reviewed before use.
+
+The eleven shipped strategies keep their original numbers. Compatibility Wizard, automatic support scans and release launchers continue to use only those shipped strategies. `utils\validate.ps1` also checks local presets; menu installation validates the selected configuration with the engine before applying it. Safe journals replace arbitrary local names with `CUSTOM`.
+
+Keep a separate backup of local templates and launchers before updating: the updater replaces the packaged `presets` and `strategies` directories. An active local preset missing from a new release causes update preparation to stop before replacement; switch to a shipped strategy and restore the local files after updating.

@@ -4,6 +4,7 @@ $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $startupTimer=[Diagnostics.Stopwatch]::StartNew()
 . (Join-Path $PSScriptRoot 'session-log.ps1')
+. (Join-Path $PSScriptRoot 'preset-catalog.ps1')
 . (Join-Path $PSScriptRoot 'menu-input.ps1')
 . (Join-Path $PSScriptRoot 'menu-settings.ps1')
 . (Join-Path $PSScriptRoot 'service-control.ps1')
@@ -121,19 +122,25 @@ function Update-ZapretMenuService {
 function Install-ZapretMenuService {
     Clear-ZapretMenu
     $modes=Get-ZapretMenuModes
-    $classic=@('general','ALT','ALT3','ALT5','ALT11','ALT12','ALT13','EXP','FAKE TLS AUTO ALT2')
-    $next=@('NEXT SAFE','NEXT BALANCED'); $presets=$classic+$next
+    $classic=@($classicPresets)
+    $next=@($nextPresets)
+    $presets=@(Get-ZapretMenuPresets)
+    $custom=@($presets | Where-Object { $_ -notin $publicPresets })
     foreach ($preset in $presets) { if (-not [IO.File]::Exists((Join-Path $root ('presets\'+$preset+'.txt.in')))) { throw "Missing preset: $preset" } }
-    Write-Host '  Classic presets                             NEXT presets'
-    Write-Host '  ----------------------------------------    ----------------------------'
-    for ($i=0;$i -lt $classic.Count;$i++) {
-        $right=if ($i -lt $next.Count) { "{0}. {1}" -f ($classic.Count+$i+1),$next[$i] } else {''}
-        Write-Host ('{0,-46}{1}' -f ('  '+($i+1)+'. '+$classic[$i]),$right)
+    Write-Host ('{0,-46}{1,-30}{2}' -f '  Classic presets','NEXT presets','Custom / other')
+    Write-Host ('{0,-46}{1,-30}{2}' -f '  ----------------------------------------','----------------------------','----------------------')
+    $rows=[Math]::Max([Math]::Max($classic.Count,$next.Count),$custom.Count)
+    for ($i=0;$i -lt $rows;$i++) {
+        $left=if ($i -lt $classic.Count) { "{0}. {1}" -f ($i+1),$classic[$i] } else {''}
+        $middle=if ($i -lt $next.Count) { "{0}. {1}" -f ($classic.Count+$i+1),$next[$i] } else {''}
+        $customLine=if ($i -lt $custom.Count) { "{0}. {1}" -f ($classic.Count+$next.Count+$i+1),$custom[$i] } else {''}
+        Write-Host ('{0,-46}{1,-30}{2}' -f ('  '+$left),$middle,$customLine)
     }
     $pick=Read-ZapretMenuLine "Select preset (1-$($presets.Count), 0=cancel): "
     if ($pick -eq '0') { return }
-    if ($pick -notmatch '^\d{1,2}$' -or [int]$pick -lt 1 -or [int]$pick -gt $presets.Count) { throw 'Invalid preset selection.' }
-    $selected=$presets[[int]$pick-1]
+    $selection=0
+    if ($pick -notmatch '^\d+$' -or -not [int]::TryParse($pick,[ref]$selection) -or $selection -lt 1 -or $selection -gt $presets.Count) { throw 'Invalid preset selection.' }
+    $selected=$presets[$selection-1]
     Write-Host "`nSelected configuration:`n  Strategy: $selected   Game: $($modes.Game)   IPSet: $($modes.IPSet)   Voice: $($modes.Voice)"
     Write-Host "  UDP fakes: Discord=$($modes.DiscordFake)   Game=$($modes.GameFake)"
     if ((Read-ZapretMenuLine 'Install this service configuration? [Y/n]: ') -ieq 'N') { return }

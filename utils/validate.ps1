@@ -241,7 +241,7 @@ $loadedIPSetHasEntries = (Test-Path -LiteralPath $loadedIPSetPath -PathType Leaf
     @((Get-Content -LiteralPath $loadedIPSetPath) | Where-Object { $_ -notmatch '^\s*(?:#|$)' }).Count -gt 0
 
 . (Join-Path $PSScriptRoot 'preset-catalog.ps1')
-$publicPresetNames = $publicPresets
+$publicPresetNames = @(Get-ZapretMenuPresets)
 $presets = foreach ($name in $publicPresetNames) {
     $path = Join-Path $presetDir "$name.txt.in"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -254,11 +254,8 @@ if ($presets.Count -ne $publicPresetNames.Count) {
     Add-ValidationError "Expected $($publicPresetNames.Count) public presets; found $($presets.Count)."
 }
 
-$expectedPublicLaunchers = @(
-    'general.bat', 'general (ALT).bat', 'general (ALT3).bat', 'general (ALT5).bat',
-    'general (ALT11).bat', 'general (ALT12).bat', 'general (ALT13).bat', 'general (EXP).bat',
-    'general (FAKE TLS AUTO ALT2).bat', 'general (NEXT SAFE).bat', 'general (NEXT BALANCED).bat'
-)
+$expectedPublicLaunchers = @(Get-ZapretRequiredLaunchers)
+$customLauncherNames = @(Get-ZapretCustomPresets | ForEach-Object { Get-ZapretPresetLauncher $_ } | Where-Object { Test-Path -LiteralPath (Join-Path $root ('strategies\' + $_)) -PathType Leaf })
 $strategyDir = Join-Path $root 'strategies'
 $rootOnlyBatches = @(Get-ChildItem -LiteralPath $root -Filter '*.bat' -File | ForEach-Object Name)
 if ($rootOnlyBatches.Count -ne 1 -or $rootOnlyBatches[0] -ne 'service.bat') { Add-ValidationError 'Only service.bat may be a root launcher.' }
@@ -268,6 +265,13 @@ foreach ($launcher in $expectedPublicLaunchers) {
 }
 foreach ($experimentalLauncher in @('general (NEXT AGGRESSIVE).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
     if ($rootBatches -contains $experimentalLauncher) { Add-ValidationError "Experimental launcher must not be public: $experimentalLauncher" }
+}
+foreach ($launcher in $customLauncherNames) {
+    $preset = $launcher -replace '^general \((.+)\)\.bat$', '$1'
+    $launcherContent = Get-Content -LiteralPath (Join-Path $strategyDir $launcher) -Raw
+    if ($launcherContent -notmatch [regex]::Escape('run-preset.bat" "' + $preset + '"')) {
+        Add-ValidationError "Custom launcher does not invoke its own preset: $launcher"
+    }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'diagnose discord voice.bat'))) {
     Add-ValidationError 'The Discord voice diagnostic launcher is missing.'
