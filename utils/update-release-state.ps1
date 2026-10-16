@@ -20,32 +20,9 @@ function Get-ReleaseEngineProcesses {
     @(Get-CimInstance Win32_Process -Filter "Name='winws2.exe' OR Name='winws.exe'" -ErrorAction Stop)
 }
 function Stop-ReleaseOwnedDriver([string]$Root) {
-    $driver = Get-CimInstance Win32_SystemDriver -Filter "Name='WinDivert'" -ErrorAction Stop
-    if (-not $driver -or $driver.State -eq 'Stopped') { return }
-    $path = ([string]$driver.PathName).Trim('"')
-    if ($path.StartsWith('\??\') -or $path.StartsWith('\\?\')) { $path = $path.Substring(4) }
-    # WinDivert is shared system-wide. Never stop another bundle's driver.
-    if ($path -ine (Join-Path $Root 'bin\WinDivert64.sys')) { return }
-    $timer = [Diagnostics.Stopwatch]::StartNew()
-    while (@(Get-ReleaseEngineProcesses).Count) {
-        if ($timer.Elapsed.TotalSeconds -ge 5) { throw 'An engine is still running; the release driver cannot be stopped safely.' }
-        Start-Sleep -Milliseconds 50
-    }
     # Stopping winws2 alone does not unload WinDivert. Otherwise its old .sys
     # remains mapped after bin is moved to backup and cannot be deleted.
-    $service = Get-Service -Name WinDivert -ErrorAction Stop
-    if ($service.Status -ne 'Stopped') {
-        if ($service.Status -ne 'StopPending') { $service.Stop() }
-        # WinDivert can remove its registration on unload. ServiceController's
-        # WaitForStatus then throws 1060 even though the driver stopped normally.
-        $timer.Restart()
-        while ($true) {
-            $current = Get-CimInstance Win32_SystemDriver -Filter "Name='WinDivert'" -ErrorAction Stop
-            if (-not $current -or $current.State -eq 'Stopped') { break }
-            if ($timer.Elapsed.TotalSeconds -ge 30) { throw 'The release driver did not unload.' }
-            Start-Sleep -Milliseconds 50
-        }
-    }
+    Stop-ZapretOwnedDriver -Root $Root -RequireIdle
 }
 function Get-ReleaseWindowsState([string]$Root) {
     $service = Get-ZapretServiceSnapshot

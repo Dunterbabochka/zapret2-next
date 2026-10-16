@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'ipset-utils.ps1')
 . (Join-Path $PSScriptRoot 'service-control.ps1')
+$realStopDriver = ${function:Stop-ZapretOwnedDriver}
 $fixture = Join-Path $root ('runtime\stability-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixture -Force | Out-Null
 $checks = 0
@@ -31,6 +32,11 @@ function Assert-ZapretNoManualEngine {
     if ($script:conflict) { throw 'Injected manual process conflict' }
 }
 function Stop-ZapretService { $script:events.Add('stop') }
+function Stop-ZapretOwnedDriver {
+    param([string]$Root, [switch]$RequireIdle)
+    $script:events.Add('driver-stop')
+    if ($script:failDriverStop) { throw 'Injected driver stop failure' }
+}
 function Start-ZapretService {
     $script:events.Add('start')
     if ($script:failStart) { $script:failStart = $false; throw 'Injected startup failure' }
@@ -53,6 +59,7 @@ function Reset-ServiceFixture([bool]$Existing = $true) {
     $script:failValidation = $false
     $script:failStart = $false
     $script:failRegister = $false
+    $script:failDriverStop = $false
     $script:conflict = $false
     $script:snapshot = if ($Existing) {
         [pscustomobject]@{ PathName = 'original image'; StartMode = 'Manual'; WasRunning = $true; Strategy = 'ALT' }
@@ -66,6 +73,89 @@ function Reset-ServiceFixture([bool]$Existing = $true) {
 
 try {
     Write-Host 'Testing injected failures; ERROR/WARN messages below are expected.' -ForegroundColor Cyan
+    # Exercise real driver cleanup against isolated SCM/process boundaries.
+    & {
+        function Reset-DriverFixture {
+            $script:driverState = [pscustomobject]@{Name='WinDivert64';State='Running';PathName=('\??\'+(Join-Path $fixture 'bin\WinDivert64.sys'))}
+            $script:driverEvents = [Collections.Generic.List[string]]::new()
+            $script:driverQueries = 0; $script:engineQueries = 0; $script:controllerQueries = 0
+            $script:driverEngines = @(); $script:engineExiting = $false; $script:pendingUnload = $false
+            $script:driverStopFails = $false; $script:processQueryFails = $false
+            $script:driverService = [pscustomobject]@{Status='Running'}
+            $script:driverService | Add-Member ScriptMethod Stop {
+                if ($script:driverStopFails) { throw 'Injected SCM driver stop failure' }
+                $script:driverEvents.Add('driver-stop')
+                $script:driverState = $null
+            }
+            $script:driverService | Add-Member ScriptMethod WaitForStatus { throw 'Removed driver registrations cannot be polled through ServiceController' }
+        }
+        function Get-CimInstance {
+            param($ClassName, $Filter)
+            switch ($ClassName) {
+                Win32_SystemDriver {
+                    $script:driverQueries++
+                    if ($script:pendingUnload -and $script:driverQueries -gt 1) { $script:driverState.State = 'Stopped' }
+                    return $script:driverState
+                }
+                Win32_Process {
+                    $script:engineQueries++
+                    if ($script:processQueryFails) { throw 'Injected process query failure' }
+                    if ($script:engineExiting -and $script:engineQueries -gt 1) { return @() }
+                    return $script:driverEngines
+                }
+                default { throw "Unexpected CIM query: $ClassName" }
+            }
+        }
+        function Get-Service {
+            param($Name)
+            Assert-Stability ($Name -eq $script:driverState.Name) 'Cleanup used a hard-coded driver service name'
+            $script:controllerQueries++
+            return $script:driverService
+        }
+        Reset-DriverFixture
+        & $realStopDriver $fixture
+        Assert-Stability (($driverEvents -join ',') -eq 'driver-stop' -and $driverQueries -ge 2) 'Owned driver was not unloaded or removed registration was rejected'
+        foreach ($path in @(('"'+(Join-Path $fixture 'bin\WinDivert64.sys')+'"'), ('\\?\'+(Join-Path $fixture 'bin\WinDivert64.sys')))) {
+            Reset-DriverFixture
+            $script:driverState.PathName = $path
+            & $realStopDriver $fixture
+            Assert-Stability ($driverEvents.Count -eq 1) 'Quoted or extended driver path was not recognized'
+        }
+        Reset-DriverFixture
+        $script:driverState.PathName = '\??\C:\OtherBundle\bin\WinDivert64.sys'
+        & $realStopDriver $fixture
+        Assert-Stability ($controllerQueries -eq 0 -and $engineQueries -eq 0) 'Another bundle driver was touched'
+        Reset-DriverFixture
+        $script:driverState = $null
+        & $realStopDriver $fixture
+        Assert-Stability ($controllerQueries -eq 0) 'Absent driver was stopped'
+        Reset-DriverFixture
+        $script:driverState.State = 'Stopped'
+        & $realStopDriver $fixture
+        Assert-Stability ($controllerQueries -eq 0) 'Stopped driver was stopped again'
+        Reset-DriverFixture
+        $script:driverService.Status = 'StopPending'; $script:pendingUnload = $true
+        & $realStopDriver $fixture
+        Assert-Stability ($driverEvents.Count -eq 0 -and $driverQueries -ge 2) 'Pending unload sent a duplicate stop or was not awaited'
+        Reset-DriverFixture
+        $script:driverEngines = @([pscustomobject]@{ProcessId=123}); $script:engineExiting = $true
+        & $realStopDriver $fixture
+        Assert-Stability ($engineQueries -ge 2 -and $driverEvents.Count -eq 1) 'Cleanup did not wait for the service process to exit'
+        Reset-DriverFixture
+        $script:driverEngines = @([pscustomobject]@{ProcessId=123})
+        & $realStopDriver $fixture
+        Assert-Stability ($controllerQueries -eq 0) 'Cleanup stopped a driver while another engine was active'
+        Assert-Rejected { & $realStopDriver $fixture -RequireIdle } 'Release cleanup accepted an active engine'
+        Assert-Stability ($controllerQueries -eq 0) 'Release cleanup stopped a driver used by an active engine'
+        Reset-DriverFixture
+        $script:driverStopFails = $true
+        Assert-Rejected { & $realStopDriver $fixture } 'SCM driver stop failure was hidden'
+        Reset-DriverFixture
+        $script:processQueryFails = $true
+        Assert-Rejected { & $realStopDriver $fixture } 'Cleanup ignored a failed process ownership check'
+        Assert-Stability ($controllerQueries -eq 0) 'Cleanup stopped the driver without checking active engines'
+    }
+
     $source = Join-Path $fixture 'source.txt'
     $destination = Join-Path $fixture 'loaded.txt'
     Write-IPFixture $source 10
@@ -222,7 +312,14 @@ exit (Invoke-ZapretEngine -Config $Config -LogPrefix (Join-Path $Root 'early') -
     Assert-Stability ($events.Count -eq 0 -and (Test-Path $serviceConfig)) 'Foreign service removal changed local state'
     Reset-ServiceFixture
     Remove-ZapretServiceConfiguration $serviceRoot
-    Assert-Stability (($events -join ',') -eq 'delete-new-service' -and -not (Test-Path $serviceConfig)) 'Owned service removal left the config behind'
+    Assert-Stability (($events -join ',') -eq 'delete-new-service,driver-stop' -and -not (Test-Path $serviceConfig)) 'Owned service removal skipped driver cleanup or left the config behind'
+    Reset-ServiceFixture
+    $script:failDriverStop = $true
+    Assert-Rejected { Remove-ZapretServiceConfiguration $serviceRoot } 'Driver stop failure was reported as successful removal'
+    Assert-Stability (($events -join ',') -eq 'delete-new-service,driver-stop') 'Driver cleanup ran before service removal'
+    Reset-ServiceFixture $false
+    Remove-ZapretServiceConfiguration $serviceRoot
+    Assert-Stability (($events -join ',') -eq 'driver-stop') 'Removal could not retry driver cleanup after the service was already deleted'
     Assert-Stability (@(Get-ChildItem $fixture -Recurse -File -Filter '*.tmp').Count -eq 0) 'Temporary files leaked after failure'
     Write-Host "Stability validation passed: $checks offline failure-injection checks." -ForegroundColor Green
 } finally {

@@ -32,6 +32,40 @@ function Stop-ZapretService {
     Write-ZapretLogEvent -Component service -Stage stop -Result stopped
 }
 
+function Stop-ZapretOwnedDriver {
+    param([string]$Root, [switch]$RequireIdle)
+    $expected = Join-Path $Root 'bin\WinDivert64.sys'
+    $drivers = @(Get-CimInstance Win32_SystemDriver -Filter "Name LIKE 'WinDivert%'" -ErrorAction Stop)
+    foreach ($driver in $drivers) {
+        if ($driver.State -eq 'Stopped') { continue }
+        $path = ([string]$driver.PathName).Trim('"')
+        if ($path.StartsWith('\??\') -or $path.StartsWith('\\?\')) { $path = $path.Substring(4) }
+        # Driver names vary between WinDivert versions; ownership is its file path.
+        if ($path -ine $expected) { continue }
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        while (@(Get-CimInstance Win32_Process -Filter "Name='winws2.exe' OR Name='winws.exe'" -ErrorAction Stop).Count) {
+            if ($timer.Elapsed.TotalSeconds -ge 5) {
+                if ($RequireIdle) { throw 'An engine is still running; the bundle driver cannot be stopped safely.' }
+                Write-Host '[WARN] WinDivert was left running because another winws/winws2 process is active.' -ForegroundColor Yellow
+                return
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        $service = Get-Service -Name $driver.Name -ErrorAction Stop
+        if ($service.Status -eq 'Stopped') { continue }
+        if ($service.Status -ne 'StopPending') { $service.Stop() }
+        # Unloading can remove the registration, making WaitForStatus throw 1060.
+        $timer.Restart()
+        while ($true) {
+            $current = @(Get-CimInstance Win32_SystemDriver -Filter "Name LIKE 'WinDivert%'" -ErrorAction Stop |
+                Where-Object { $_.Name -ieq $driver.Name })
+            if (-not $current.Count -or $current[0].State -eq 'Stopped') { break }
+            if ($timer.Elapsed.TotalSeconds -ge 30) { throw 'The bundle WinDivert driver did not unload.' }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+}
+
 function Start-ZapretService {
     Write-ZapretLogEvent -Component service -Stage start -Result started
     $service = Get-Service winws2 -ErrorAction Stop
@@ -106,6 +140,7 @@ function Remove-ZapretServiceConfiguration {
             if ($snapshot.PathName -ne $image) { throw 'The installed service belongs to another folder. Remove it using that bundle.' }
             Remove-ZapretServiceRegistration
         }
+        Stop-ZapretOwnedDriver -Root $Root
         Remove-Item -LiteralPath $config -Force -ErrorAction SilentlyContinue
         Write-Host '[OK] Zapret 2 NEXT service removed.' -ForegroundColor Green
     } finally {

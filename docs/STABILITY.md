@@ -19,7 +19,8 @@ may replace only a process using this bundle's executable, after configuration
 validation. Active services and other bundles produce a conflict message.
 Validation has a 30-second timeout and retains the process handle to read its
 exit code reliably on Windows PowerShell 5.1. Service removal waits for a stop
-and leaves shared WinDivert registrations and other manual processes alone.
+and unloads WinDivert registered from this bundle once no winws/winws2 processes
+remain. Drivers from other folders and other manual processes are left alone.
 
 ## IPSet updates and packaging
 

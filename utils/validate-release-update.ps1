@@ -259,10 +259,13 @@ try {
     # Model the loaded .sys with a real file lock, released only by driver stop.
     & {
         $script:driverEvents=[Collections.Generic.List[string]]::new()
-        $script:driverState=[pscustomobject]@{State='Running';PathName=('\??\'+(Join-Path $script:install 'bin\WinDivert64.sys'))}
+        $script:driverState=[pscustomobject]@{Name='WinDivert';State='Running';PathName=('\??\'+(Join-Path $script:install 'bin\WinDivert64.sys'))}
         $script:driverQueries=0
-        function Get-CimInstance {param($ClassName,$Filter);$script:driverQueries++;return $script:driverState}
-        function Get-ReleaseEngineProcesses {return @()}
+        function Get-CimInstance {
+            param($ClassName,$Filter)
+            if ($ClassName -eq 'Win32_Process') { return @() }
+            $script:driverQueries++;return $script:driverState
+        }
         $script:driverService=[pscustomobject]@{Status='Running'}
         $script:driverService | Add-Member ScriptMethod Stop {
             $script:driverEvents.Add('stop')
@@ -282,7 +285,7 @@ try {
             Assert-Update (($script:driverEvents -join ',') -eq 'stop' -and $script:driverQueries -ge 2) 'Removed driver registration was not accepted as an unload'
         } finally { if ($script:driverLock) {$script:driverLock.Dispose();$script:driverLock=$null} }
         $script:driverEvents.Clear()
-        $script:driverState=[pscustomobject]@{State='Running';PathName='\??\C:\OtherBundle\bin\WinDivert64.sys'}
+        $script:driverState=[pscustomobject]@{Name='WinDivert';State='Running';PathName='\??\C:\OtherBundle\bin\WinDivert64.sys'}
         & $realStopDriver $script:install
         Assert-Update ($script:driverEvents.Count -eq 0) 'Another bundle driver was stopped'
         $script:driverState=$null

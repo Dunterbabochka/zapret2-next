@@ -33,7 +33,7 @@ the wizard self-test simulates 13 outcomes without changing live services.
 4. Cycle IPSet through loaded and none, then restore loaded. The any mode remains diagnostic-only.
 5. Run diagnostics and the standard preset test suite.
 6. Reinstall a different strategy and verify that the existing service is updated after config validation and a completed stop, without deleting its registration.
-7. Remove the service and verify that `sc query winws2` reports no service and its process has stopped. Other manual processes and shared WinDivert registrations must remain untouched.
+7. Remove the service and verify that `sc query winws2` reports no service and its process has stopped. WinDivert registered from this bundle must be stopped or unregistered when no winws/winws2 process remains. Repeat with a driver from another folder and with another manual engine: those drivers and processes must remain untouched.
 
 ## 4. Update safety
 
