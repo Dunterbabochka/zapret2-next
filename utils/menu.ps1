@@ -129,10 +129,12 @@ function Install-ZapretMenuService {
     foreach ($preset in $presets) { if (-not [IO.File]::Exists((Join-Path $root ('presets\'+$preset+'.txt.in')))) { throw "Missing preset: $preset" } }
     Write-Host '  Classic presets                             NEXT presets                             Custom / other'
     Write-Host '  ----------------------------------------    ----------------------------    ----------------------'
-    for ($i=0;$i -lt $classic.Count;$i++) {
+    $rows=[Math]::Max([Math]::Max($classic.Count,$next.Count),$custom.Count)
+    for ($i=0;$i -lt $rows;$i++) {
+        $left=if ($i -lt $classic.Count) { "{0}. {1}" -f ($i+1),$classic[$i] } else {''}
         $middle=if ($i -lt $next.Count) { "{0}. {1}" -f ($classic.Count+$i+1),$next[$i] } else {''}
-        $customLine=if ($custom.Count -gt 0 -and $i -lt $custom.Count) { "{0}. {1}" -f ($classic.Count+$next.Count+$i+1),$custom[$i] } else {''}
-        Write-Host ('{0,-46}{1,-30}{2}' -f ('  '+($i+1)+'. '+$classic[$i]),$middle,$customLine)
+        $customLine=if ($i -lt $custom.Count) { "{0}. {1}" -f ($classic.Count+$next.Count+$i+1),$custom[$i] } else {''}
+        Write-Host ('{0,-46}{1,-30}{2}' -f ('  '+$left),$middle,$customLine)
     }
     $pick=Read-ZapretMenuLine "Select preset (1-$($presets.Count), 0=cancel): "
     if ($pick -eq '0') { return }
