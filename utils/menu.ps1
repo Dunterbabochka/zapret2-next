@@ -127,8 +127,8 @@ function Install-ZapretMenuService {
     $custom=@(Get-ZapretCustomPresets)
     $presets=@(Get-ZapretMenuPresets)
     foreach ($preset in $presets) { if (-not [IO.File]::Exists((Join-Path $root ('presets\'+$preset+'.txt.in')))) { throw "Missing preset: $preset" } }
-    Write-Host '  Classic presets                             NEXT presets                             Custom / other'
-    Write-Host '  ----------------------------------------    ----------------------------    ----------------------'
+    Write-Host ('{0,-46}{1,-30}{2}' -f '  Classic presets','NEXT presets','Custom / other')
+    Write-Host ('{0,-46}{1,-30}{2}' -f '  ----------------------------------------','----------------------------','----------------------')
     $rows=[Math]::Max([Math]::Max($classic.Count,$next.Count),$custom.Count)
     for ($i=0;$i -lt $rows;$i++) {
         $left=if ($i -lt $classic.Count) { "{0}. {1}" -f ($i+1),$classic[$i] } else {''}
