@@ -67,7 +67,7 @@ Get-FileHash .\zapret2-next-vX.Y.Z.zip -Algorithm SHA256
 Из корня проекта:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.4.3
+powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.4.4
 powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.5.0-beta.1 -Beta
 ```
 
