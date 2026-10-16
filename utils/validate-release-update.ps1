@@ -16,6 +16,7 @@ $realRemove = ${function:Remove-ReleaseTree}
 $realWindowsState = ${function:Get-ReleaseWindowsState}
 $realStartWindows = ${function:Start-ReleaseWindowsState}
 $realStopWindows = ${function:Stop-ReleaseWindowsState}
+$realStopDriver = ${function:Stop-ReleaseOwnedDriver}
 
 function Assert-Update([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
@@ -50,6 +51,10 @@ function Get-ReleaseWindowsState([string]$Root) {
 }
 function Stop-ReleaseWindowsState($Snapshot) { $script:events.Add('stop'); if ($script:failStop) { throw 'Injected stop failure' } }
 function Stop-ReleaseInstalledProcesses($Root,$Snapshot) { $script:events.Add('stop-updated') }
+function Stop-ReleaseOwnedDriver($Root) {
+    $script:events.Add('driver-stop')
+    if ($script:failDriverStop) { throw 'Injected driver stop failure' }
+}
 function Start-ReleaseWindowsState($Root,$Snapshot) {
     $script:events.Add('start')
     Assert-Update (Test-Path -LiteralPath (Join-Path $Root 'bin\winws2.exe')) 'Restart happened before files were restored'
@@ -90,6 +95,7 @@ function Reset-PreparedFixture {
     $script:events=[Collections.Generic.List[string]]::new()
     $script:failurePoint='';$script:failStart=$false;$script:failStop=$false;$script:noService=$false;$script:stoppedService=$false
     $script:failStartCount=0
+    $script:failDriverStop=$false
     $transaction=Read-ReleaseJson (Join-Path (Get-ReleaseUpdateDirectory $script:install) 'transaction.json')
     Initialize-ZapretLog -Root $script:install -Component update -Action Apply -SessionId $transaction.LogSessionId
     $transaction.Root=$script:install
@@ -220,7 +226,7 @@ try {
     Assert-Update (Test-Path -LiteralPath (Join-Path $script:install 'lists\new-required.txt')) 'A new required list was not added'
     Assert-Update (-not (Test-Path -LiteralPath (Join-Path (Get-ReleaseSession $script:install $result) 'backup'))) 'Old release was not deleted after success'
     Assert-Preserved $script:install
-    Assert-Update (($script:events -join ',') -eq 'stop,start') 'Unexpected process ordering'
+    Assert-Update (($script:events -join ',') -eq 'stop,driver-stop,start') 'Driver was not unloaded between engine stop and file replacement'
     $logEvents=(Get-ZapretLogSnapshot $script:install).Events
     Assert-Update (@($logEvents | Where-Object {$_.component -eq 'update' -and $_.stage -eq 'files'}).Count -gt 0) 'File replacement steps missing from journal'
     Assert-Update (Test-Path (Join-Path $script:install 'runtime\release-update\recovery\session-log.ps1')) 'Recovery logger missing'
@@ -242,6 +248,47 @@ try {
     Set-Item Function:Remove-ReleaseTree $realRemove
     Invoke-ReleaseRecover $script:install
     Assert-Update (-not (Read-ReleaseTransaction $script:install).CleanupPending) 'Deferred cleanup was not retried'
+
+    $transaction=Reset-PreparedFixture
+    $script:failDriverStop=$true
+    Assert-UpdateRejected { Invoke-ReleaseApply $script:install } 'Driver stop failure did not abort replacement'
+    Assert-Update ((Read-ReleaseTransaction $script:install).Status -eq 'rolled-back' -and (Get-ReleaseVersion $script:install) -eq '9.9.0') 'Driver stop failure damaged the installed version'
+    Assert-Update ($script:events.Contains('start')) 'Engine was not restored after driver stop failure'
+    Assert-Update (@($script:events | Where-Object {$_ -eq 'driver-stop'}).Count -eq 1) 'Rollback retried a failing driver stop before any file replacement'
+
+    # Model the loaded .sys with a real file lock, released only by driver stop.
+    & {
+        $script:driverEvents=[Collections.Generic.List[string]]::new()
+        $script:driverState=[pscustomobject]@{State='Running';PathName=('\??\'+(Join-Path $script:install 'bin\WinDivert64.sys'))}
+        $script:driverQueries=0
+        function Get-CimInstance {param($ClassName,$Filter);$script:driverQueries++;return $script:driverState}
+        function Get-ReleaseEngineProcesses {return @()}
+        $script:driverService=[pscustomobject]@{Status='Running'}
+        $script:driverService | Add-Member ScriptMethod Stop {
+            $script:driverEvents.Add('stop')
+            if ($script:driverLock) { $script:driverLock.Dispose();$script:driverLock=$null }
+            $script:driverState=$null
+        }
+        $script:driverService | Add-Member ScriptMethod WaitForStatus {throw 'WinDivert registration was removed during unload'}
+        function Get-Service {param($Name);return $script:driverService}
+        $driverFixture=Join-Path $fixture 'driver-backup'
+        Write-FixtureText (Join-Path $driverFixture 'WinDivert64.sys') 'mapped driver'
+        $script:driverLock=[IO.File]::Open((Join-Path $driverFixture 'WinDivert64.sys'),'Open','Read','None')
+        try {
+            Assert-UpdateRejected { & $realRemove $fixture $driverFixture } 'Driver fixture was not locked'
+            & $realStopDriver $script:install
+            & $realRemove $fixture $driverFixture
+            Assert-Update (-not (Test-Path -LiteralPath $driverFixture)) 'Unloaded driver backup could not be removed'
+            Assert-Update (($script:driverEvents -join ',') -eq 'stop' -and $script:driverQueries -ge 2) 'Removed driver registration was not accepted as an unload'
+        } finally { if ($script:driverLock) {$script:driverLock.Dispose();$script:driverLock=$null} }
+        $script:driverEvents.Clear()
+        $script:driverState=[pscustomobject]@{State='Running';PathName='\??\C:\OtherBundle\bin\WinDivert64.sys'}
+        & $realStopDriver $script:install
+        Assert-Update ($script:driverEvents.Count -eq 0) 'Another bundle driver was stopped'
+        $script:driverState=$null
+        & $realStopDriver $script:install
+        Assert-Update ($script:driverEvents.Count -eq 0) 'An absent driver was stopped'
+    }
 
     $points=@('stopped','started') + @($transaction.Items | ForEach-Object { 'old:'+$_.Relative; 'new:'+$_.Relative })
     foreach ($point in $points) {

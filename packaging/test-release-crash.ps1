@@ -8,6 +8,7 @@ function Get-ReleaseWindowsState($Root) { (Read-ReleaseTransaction $Root).Window
 function Stop-ReleaseWindowsState($Snapshot) {}
 function Start-ReleaseWindowsState($Root,$Snapshot) {}
 function Stop-ReleaseInstalledProcesses($Root,$Snapshot) {}
+function Stop-ReleaseOwnedDriver($Root) {}
 function Test-ReleaseConfig($Root,$Config,$Output,[switch]$DryRun) {
     $options=@{}
     foreach ($property in $Config.Options.PSObject.Properties) { $options[$property.Name]=$property.Value }

@@ -101,6 +101,8 @@ if (-not $Validate) {
 }
 
 $argument = '@"' + $configPath + '"'
+$validationTimer=[Diagnostics.Stopwatch]::StartNew()
+for ($attempt=1; $attempt -le 3; $attempt++) {
 try {
     Remove-Item -LiteralPath $stdoutLog, $stderrLog -Force -ErrorAction SilentlyContinue
     $process = Start-Process -FilePath $winws -ArgumentList $argument -WorkingDirectory (Split-Path -Parent $winws) -WindowStyle Hidden -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
@@ -115,7 +117,8 @@ try {
 }
 
 if ($Validate) {
-    if (-not $process.WaitForExit($ValidationTimeoutSeconds * 1000)) {
+    $remaining=[Math]::Max(0,($ValidationTimeoutSeconds * 1000)-[int]$validationTimer.ElapsedMilliseconds)
+    if (-not $process.WaitForExit($remaining)) {
         $process.Kill()
         $process.WaitForExit()
         Write-Host "[ERROR] Config validation timed out after $ValidationTimeoutSeconds seconds." -ForegroundColor Red
@@ -128,18 +131,39 @@ if ($Validate) {
     $verified = (Test-Path -LiteralPath $stdoutLog -PathType Leaf) -and
         ([bool](Select-String -LiteralPath $stdoutLog -Pattern '^command line parameters verified$' -Quiet))
 
+    # STATUS_DLL_INIT_FAILED happens before winws2 can read the config and can
+    # be transient on Windows. Retry only dry-runs, within the original timeout;
+    # never treat an initialization failure as a successful config check.
+    if ($engineExitCode -eq -1073741502 -and $attempt -lt 3 -and
+        $validationTimer.ElapsedMilliseconds + 200 -lt $ValidationTimeoutSeconds * 1000) {
+        Write-ZapretLogEvent -Stage retry -Result warning -Code NativeFailed -Details @{exitCode=$engineExitCode;attempt=$attempt}
+        Write-Host "[WARN] winws2 DLL initialization failed (0xC0000142); retrying validation ($($attempt+1)/3)." -ForegroundColor Yellow
+        foreach ($path in @($stdoutLog,$stderrLog)) {
+            if ([IO.File]::Exists($path)) { Copy-Item -LiteralPath $path -Destination ($path+'.attempt-'+$attempt) -Force }
+        }
+        $process.Dispose(); $process=$null
+        Start-Sleep -Milliseconds 200
+        continue
+    }
+
     # Windows PowerShell can lose ExitCode for a short-lived Start-Process
     # child with redirected streams. The dry-run success marker is emitted by
     # winws2 only after its complete argument and file validation succeeds.
-    if ($engineExitCode -eq 0 -or ($null -eq $engineExitCode -and $verified)) {
+    if ($verified -and ($engineExitCode -eq 0 -or $null -eq $engineExitCode)) {
         Complete-ZapretLogOperation -ExitCode 0; return 0
     } else {
         $displayExitCode = if ($null -eq $engineExitCode) { 'unknown' } else { $engineExitCode }
-        Write-ZapretLogEvent -Stage validate -Result error -Code NativeFailed -Details @{exitCode=$engineExitCode}
-        Write-Host "[ERROR] winws2 rejected the generated config (exit $displayExitCode)." -ForegroundColor Red
+        Write-ZapretLogEvent -Stage validate -Result error -Code NativeFailed -Details @{exitCode=$engineExitCode;attempt=$attempt}
+        if ($engineExitCode -eq -1073741502) {
+            Write-Host '[ERROR] winws2 DLL initialization failed (0xC0000142). The configuration could not be checked.' -ForegroundColor Red
+        } else {
+            Write-Host "[ERROR] winws2 could not verify the generated config (exit $displayExitCode)." -ForegroundColor Red
+        }
         Show-EngineLog
         Complete-ZapretLogOperation -ExitCode 13; return 13
     }
+}
+break # A real launch is started once; it must never use dry-run retries.
 }
 
 $null=$process.WaitForExit($StartupWaitSeconds * 1000)

@@ -23,7 +23,18 @@ $resultsDir = Join-Path $root 'runtime\test-results'
 New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 
 try { $Host.UI.RawUI.WindowTitle = 'Zapret 2 NEXT - Preset tests' } catch { Write-ZapretLogException $_ -Warning;}
-if (-not $NonInteractive) { Clear-Host }
+if (-not $NonInteractive) {
+    # A new powershell.exe console otherwise uses its saved blue background.
+    try {
+        $Host.UI.RawUI.BackgroundColor = 'Black'
+        $Host.UI.RawUI.ForegroundColor = 'Gray'
+        if (-not [Console]::IsOutputRedirected) {
+            [Console]::SetBufferSize([Math]::Max(110,[Console]::BufferWidth),[Math]::Max(35,[Console]::BufferHeight))
+            [Console]::SetWindowSize([Math]::Min(110,[Console]::LargestWindowWidth),[Math]::Min(35,[Console]::LargestWindowHeight))
+        }
+    } catch { Write-ZapretLogException $_ -Warning; }
+    Clear-Host
+}
 Write-Host 'Zapret 2 NEXT test environment' -ForegroundColor Cyan
 Write-Host '----------------------------------------' -ForegroundColor DarkCyan
 

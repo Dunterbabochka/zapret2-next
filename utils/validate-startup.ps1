@@ -107,6 +107,61 @@ Assert-Startup ($script:refreshes.Count -eq $count) 'Cancel applied a setting'
 $script:answers.Enqueue('11');$script:answers.Enqueue('Y');Install-ZapretMenuService
 Assert-Startup ($script:refreshes[$script:refreshes.Count-1].Preset -eq 'NEXT BALANCED' -and $script:refreshes[$script:refreshes.Count-1].Install) 'Preset mapping or install confirmation changed'
 
+# Run the production engine coordinator with only the native process boundary
+# replaced. No running strategy or Telegram task is stopped by these cases.
+& {
+    . (Join-Path $fixture 'utils\engine-control.ps1')
+    [IO.File]::WriteAllText((Join-Path $fixture 'bin\winws2.exe'),'fixture: never executed')
+    function Get-ZapretManualLaunchState { return @() }
+    function Start-Process {
+        param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle,$RedirectStandardOutput,$RedirectStandardError,[switch]$PassThru)
+        $script:engineAttempts++
+        if (-not $script:engineSteps.Count) { throw 'Unexpected engine retry' }
+        $step=$script:engineSteps.Dequeue()
+        [IO.File]::WriteAllText($RedirectStandardOutput,$(if ($step.Marker) {"command line parameters verified`r`n"} else {''}))
+        [IO.File]::WriteAllText($RedirectStandardError,('attempt-'+$script:engineAttempts))
+        $process=[pscustomobject]@{Handle=1;ExitCode=$step.Code;HasExited=$step.Exited;WaitResult=$step.Exited}
+        $process | Add-Member ScriptMethod WaitForExit {
+            param([int]$Milliseconds)
+            if ($PSBoundParameters.ContainsKey('Milliseconds')) { $script:engineWaits.Add($Milliseconds); return $this.WaitResult }
+        }
+        $process | Add-Member ScriptMethod Refresh {}
+        $process | Add-Member ScriptMethod Dispose {$script:engineDisposals++}
+        $process | Add-Member ScriptMethod Kill {$script:engineKills++;$this.HasExited=$true}
+        return $process
+    }
+    $dll=@{Code=-1073741502;Marker=$false;Exited=$true}
+    $good=@{Code=0;Marker=$true;Exited=$true}
+    $cases=@(
+        @{Name='transient';Steps=@($dll,$good);Result=0;Attempts=2;Validate=$true},
+        @{Name='two-transient';Steps=@($dll,$dll,$good);Result=0;Attempts=3;Validate=$true},
+        @{Name='persistent';Steps=@($dll,$dll,$dll);Result=13;Attempts=3;Validate=$true},
+        @{Name='config-error';Steps=@(@{Code=1;Marker=$false;Exited=$true});Result=13;Attempts=1;Validate=$true},
+        @{Name='missing-marker';Steps=@(@{Code=0;Marker=$false;Exited=$true});Result=13;Attempts=1;Validate=$true},
+        @{Name='lost-exit-code';Steps=@(@{Code=$null;Marker=$true;Exited=$true});Result=0;Attempts=1;Validate=$true},
+        @{Name='marker-with-error';Steps=@(@{Code=1;Marker=$true;Exited=$true});Result=13;Attempts=1;Validate=$true},
+        @{Name='timeout';Steps=@(@{Code=$null;Marker=$false;Exited=$false});Result=16;Attempts=1;Validate=$true},
+        @{Name='live-init-error';Steps=@($dll);Result=14;Attempts=1;Validate=$false},
+        @{Name='live-running';Steps=@(@{Code=$null;Marker=$false;Exited=$false});Result=0;Attempts=1;Validate=$false}
+    )
+    foreach ($case in $cases) {
+        $script:engineSteps=[Collections.Generic.Queue[object]]::new()
+        foreach ($step in $case.Steps) {$script:engineSteps.Enqueue($step)}
+        $script:engineAttempts=0;$script:engineDisposals=0;$script:engineKills=0
+        $script:engineWaits=[Collections.Generic.List[int]]::new()
+        $prefix=Join-Path $fixture ('runtime\engine-'+$case.Name)
+        $result=Invoke-ZapretEngine -Config $out -LogPrefix $prefix -Validate:$case.Validate
+        Assert-Startup ($result -eq $case.Result) ('Engine result: '+$case.Name)
+        Assert-Startup ($script:engineAttempts -eq $case.Attempts) ('Engine retry policy: '+$case.Name)
+        Assert-Startup ($script:engineDisposals -eq $case.Attempts) ('Engine process handle leaked: '+$case.Name)
+        Assert-Startup ($script:engineKills -eq $(if($case.Name -eq 'timeout'){1}else{0})) ('Unexpected process termination: '+$case.Name)
+        if ($case.Attempts -gt 1) {
+            Assert-Startup ([IO.File]::ReadAllText($prefix+'.stderr.log.attempt-1') -ceq 'attempt-1') 'Failed initialization log was overwritten'
+            Assert-Startup ($script:engineWaits[$case.Attempts-1] -lt $script:engineWaits[0]) 'Retries reset the validation timeout'
+        }
+    }
+}
+
 # Native helper loading must verify its catalog before executing the assembly.
 [IO.Directory]::CreateDirectory((Join-Path $fixture 'bin')) | Out-Null
 $native=Join-Path $fixture 'bin\zapret-native.dll'

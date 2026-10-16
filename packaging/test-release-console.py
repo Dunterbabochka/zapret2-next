@@ -49,6 +49,7 @@ kernel.AttachConsole.argtypes = [w.DWORD]
 kernel.AttachConsole.restype = w.BOOL
 kernel.GetConsoleScreenBufferInfo.argtypes = [w.HANDLE, ctypes.POINTER(BufferInfo)]
 kernel.ReadConsoleOutputCharacterW.argtypes = [w.HANDLE, w.LPWSTR, w.DWORD, Coord, ctypes.POINTER(w.DWORD)]
+kernel.ReadConsoleOutputAttribute.argtypes = [w.HANDLE, ctypes.POINTER(w.WORD), w.DWORD, Coord, ctypes.POINTER(w.DWORD)]
 kernel.WriteConsoleInputW.argtypes = [w.HANDLE, ctypes.POINTER(InputRecord), w.DWORD, ctypes.POINTER(w.DWORD)]
 kernel.CloseHandle.argtypes = [w.HANDLE]
 
@@ -108,6 +109,39 @@ class Console:
         kernel.CloseHandle(self.output)
         kernel.CloseHandle(self.input)
         kernel.FreeConsole()
+
+
+def test_preset_window(source, fixture):
+    # Execute the real startup through its first input prompt. Cut off all
+    # administrator/service/network boundaries, which are irrelevant to colors.
+    script = (source / "utils/test-presets.ps1").read_text(encoding="utf-8-sig")
+    startup, boundary, _ = script.partition("$principal = [Security.Principal.WindowsPrincipal]")
+    assert boundary, "Preset startup boundary changed"
+    probe = fixture / "utils/preset-window-probe.ps1"
+    probe.write_text(startup + "\nWrite-Host 'PRESET-WINDOW-READY'\n"
+                     "[void][Console]::ReadLine()\n} finally { Complete-ZapretLogOperation }\n",
+                     encoding="utf-8-sig")
+    wrapper = fixture / "preset-window.ps1"
+    wrapper.write_text("$Host.UI.RawUI.BackgroundColor='DarkBlue'\nClear-Host\n"
+                       "& (Join-Path $PSScriptRoot 'utils/preset-window-probe.ps1')\n",
+                       encoding="utf-8-sig")
+    console = Console(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(wrapper)])
+    try:
+        console.wait_text("PRESET-WINDOW-READY")
+        info = BufferInfo()
+        assert kernel.GetConsoleScreenBufferInfo(console.output, ctypes.byref(info))
+        assert info.attributes & 0xF0 == 0, "Preset console kept a blue default background"
+        assert info.window.Right - info.window.Left + 1 <= 110, "Preset console is too wide"
+        assert info.window.Bottom - info.window.Top + 1 <= 35, "Preset console is too tall"
+        color, read = w.WORD(), w.DWORD()
+        assert kernel.ReadConsoleOutputAttribute(console.output, ctypes.byref(color), 1,
+                                                  Coord(info.window.Right, info.window.Bottom), ctypes.byref(read))
+        assert read.value == 1 and color.value & 0xF0 == 0, "Empty console area was not cleared to black"
+        console.type("\r")
+        assert console.process.wait(timeout=5) == 0
+    finally:
+        console.close()
+    print("[OK] Preset tests replace the saved blue background with black and bound the window size")
 
 
 def main():
@@ -298,6 +332,7 @@ function Get-ReleaseHttpTarget([string]$Url) {
         console.close()
         input_path.write_bytes(saved_script)
     print("[OK] ordinary menu actions, disabled auto-check and redirected cmd.exe input")
+    test_preset_window(args.source, fixture)
 
 
 if __name__ == "__main__":
