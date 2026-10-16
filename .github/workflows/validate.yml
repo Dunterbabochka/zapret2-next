@@ -34,7 +34,10 @@ jobs:
         run: ./utils/validate.ps1
       - name: Validate preset runtime and ALT13 packet order without interception
         shell: powershell
-        run: python packaging/smoke-presets.py
+        run: |
+          python -m unittest discover -s packaging -p 'test_smoke_presets.py'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/smoke-presets.py
       - name: Validate update and service rollback on Windows PowerShell 5.1
         shell: powershell
         run: ./utils/validate-stability.ps1
