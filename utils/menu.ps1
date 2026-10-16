@@ -1,4 +1,4 @@
-Ôªø[CmdletBinding()]
+[CmdletBinding()]
 param([string]$SessionId='', [switch]$LibraryOnly)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -125,7 +125,7 @@ function Install-ZapretMenuService {
     $classic=@($classicPresets)
     $next=@($nextPresets)
     $custom=@(Get-ZapretCustomPresets)
-    $presets=$classic+$next+$custom
+    $presets=@(Get-ZapretMenuPresets)
     foreach ($preset in $presets) { if (-not [IO.File]::Exists((Join-Path $root ('presets\'+$preset+'.txt.in')))) { throw "Missing preset: $preset" } }
     Write-Host '  Classic presets                             NEXT presets                             Custom / other'
     Write-Host '  ----------------------------------------    ----------------------------    ----------------------'
@@ -287,7 +287,7 @@ function Show-ZapretDiagnosticsMenu {
                 5 {
                     Invoke-ZapretMenuOperation menu Export {
                         $zip=Export-ZapretSessionLogs -Root $root -Archive
-                        Write-Host "Logs archive / –ê—Ä—Ö–∏–≤ –ª–æ–≥–æ–≤: $zip" -ForegroundColor Cyan
+                        Write-Host "Logs archive / ¿ıË‚ ÎÓ„Ó‚: $zip" -ForegroundColor Cyan
                         Write-Host 'Attach this ZIP to your GitHub Issue or Discord message. It is not sent automatically.'
                         Start-Process explorer.exe -ArgumentList ('/select,"'+$zip+'"') | Out-Null
                     }

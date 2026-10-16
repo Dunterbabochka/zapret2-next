@@ -1,15 +1,19 @@
 # Preset catalogue shared by the wizard, simulations and validation.
 #
-# Classic and NEXT presets are the ones shipped upstream and are pinned here.
-# Everything else found in presets\ is treated as a local addition: it is
-# discovered automatically, shown in its own "Custom / other" menu column,
-# validated with the same rules as the shipped presets and optional to launch.
+# $classicPresets, $nextPresets and $publicPresets keep their original contract:
+# the release builder, the compatibility wizard and the support diagnostics all
+# iterate $publicPresets, and the wizard asserts its exact size. Do not rename or
+# redefine it.
 #
-# To add a strategy, drop presets\<NAME>.txt.in into the bundle. Optionally add
-# strategies\general (<NAME>).bat for a manual launcher. No list to edit.
+# Local additions are a separate layer: presets that live in presets\ but are
+# neither shipped nor hidden are discovered from disk, shown in their own
+# "Custom / other" menu column and validated with the same rules as the shipped
+# ones. To add a strategy, drop presets\<NAME>.txt.in into the bundle and,
+# optionally, strategies\general (<NAME>).bat. Nothing else has to be edited.
 
 $classicPresets = @('general', 'ALT', 'ALT3', 'ALT5', 'ALT11', 'ALT12', 'ALT13', 'EXP', 'FAKE TLS AUTO ALT2')
 $nextPresets = @('NEXT SAFE', 'NEXT BALANCED')
+$publicPresets = @($classicPresets + $nextPresets)
 
 # Presets that exist in the bundle but must stay hidden from the install menu.
 $hiddenPresets = @('NEXT AGGRESSIVE', 'VOICE', 'FAKE TLS AUTO', 'SIMPLE FAKE')
@@ -26,7 +30,7 @@ function Get-ZapretPresetLauncher([string]$preset) {
     'general (' + $preset + ').bat'
 }
 
-# Every preset name the bundle actually ships, in stable menu order.
+# Every strategy the bundle actually ships, in stable order.
 function Get-ZapretAllPresets {
     $presetDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'presets'
     if (-not (Test-Path -LiteralPath $presetDir -PathType Container)) { return @() }
@@ -36,21 +40,20 @@ function Get-ZapretAllPresets {
         Sort-Object)
 }
 
-# Presets added locally: present in the bundle but not shipped upstream and not hidden.
+# Local additions: present in the bundle but neither shipped nor hidden.
 function Get-ZapretCustomPresets {
-    $shipped = @($classicPresets + $nextPresets + $hiddenPresets)
+    $shipped = @($publicPresets + $hiddenPresets)
     @(Get-ZapretAllPresets | Where-Object { $shipped -notcontains $_ })
 }
 
-# The single source of truth for "public" presets: shipped plus local additions.
-# Anything referenced here must exist, so a dangling entry is a validation error.
-function Get-ZapretPublicPresets {
+# Shipped strategies plus local additions, skipping any name whose file is gone
+# so a removed preset degrades gracefully instead of breaking the wizard.
+function Get-ZapretMenuPresets {
     $present = @(Get-ZapretAllPresets)
-    @(@($classicPresets + $nextPresets) + @(Get-ZapretCustomPresets) |
-        Where-Object { $present -contains $_ })
+    @(@($publicPresets) + @(Get-ZapretCustomPresets) | Where-Object { $present -contains $_ })
 }
 
-# Shipped presets still require their launcher; local ones only need it if present.
+# Shipped strategies still require their launcher; local ones only need it if present.
 function Get-ZapretRequiredLaunchers {
-    @(@($classicPresets + $nextPresets) | ForEach-Object { Get-ZapretPresetLauncher $_ })
+    @(@($publicPresets) | ForEach-Object { Get-ZapretPresetLauncher $_ })
 }

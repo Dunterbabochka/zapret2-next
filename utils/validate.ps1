@@ -1,4 +1,4 @@
-﻿param([switch]$Quick)
+param([switch]$Quick)
 
 . (Join-Path $PSScriptRoot 'session-log.ps1')
 Initialize-ZapretLog -Root ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -Component diagnostics -Action Validate
@@ -241,7 +241,7 @@ $loadedIPSetHasEntries = (Test-Path -LiteralPath $loadedIPSetPath -PathType Leaf
     @((Get-Content -LiteralPath $loadedIPSetPath) | Where-Object { $_ -notmatch '^\s*(?:#|$)' }).Count -gt 0
 
 . (Join-Path $PSScriptRoot 'preset-catalog.ps1')
-$publicPresetNames = @(Get-ZapretPublicPresets)
+$publicPresetNames = @(Get-ZapretMenuPresets)
 $presets = foreach ($name in $publicPresetNames) {
     $path = Join-Path $presetDir "$name.txt.in"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
