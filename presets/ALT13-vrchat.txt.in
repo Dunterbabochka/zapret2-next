@@ -15,11 +15,11 @@
 --lua-desync=next_hostfakesplit:host=mail.ru:tcp_ts=-1000:tcp_ts_up:repeats=5
 
 [GOOGLE_TLS]
---lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=5
+--lua-desync=hostfakesplit:host=www.google.com:tcp_ts=-1000:tcp_ts_up
 
 
 [QUIC]
---lua-desync=fake:blob=quic_google:repeats=6
+--lua-desync=fake:blob=quic_google:repeats=11
 
 [DISCORD_MEDIA_TLS]
 --lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=7
