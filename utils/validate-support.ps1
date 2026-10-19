@@ -129,7 +129,7 @@ foreach ($scenarioName in @('success','full-fail','timeout','mixed','warnings','
         $scans = @($script:events | Where-Object { $_ -like 'scan:*' })
         if ($scenarioName -in @('success','full-fail','timeout','mixed','warnings','no-service','stopped-service')) {
             Assert-Support ($doc.status -eq 'completed') "$scenarioName did not complete"
-            $expected = if ($scenarioName -in @('full-fail','timeout')) {22} elseif ($scenarioName -eq 'mixed') {21} else {11}
+            $expected = if ($scenarioName -in @('full-fail','timeout')) {48} elseif ($scenarioName -eq 'mixed') {47} else {24}
             Assert-Support ($scans.Count -eq $expected) "$scenarioName skipped presets or fallback"
         }
         if ($scenarioName -in @('foreign','proxy','stale-service','cancel','preflight-error','busy','no-service','stopped-service')) {

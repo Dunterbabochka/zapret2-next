@@ -163,8 +163,10 @@ if ($menuContent -notmatch 'discord_fake\.mode' -or
     Add-ValidationError 'Service Manager must persist independent allowlisted Discord and Game fake selections.'
 }
 $rendererContent = Get-Content -LiteralPath $renderer -Raw
-if ($rendererContent -notmatch "'steam' = 'quic_initial_steamcommunity_com\.bin'" -or
-    $rendererContent -notmatch "'dbank-v2' = 'quic_initial_dbankcloud_ru_v2\.bin'" -or
+$settingsContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'config-settings.ps1') -Raw
+if ($settingsContent -notmatch "steam\s*=\s*'quic_initial_steamcommunity_com\.bin'" -or
+    $settingsContent -notmatch "'dbank-v2'\s*=\s*'quic_initial_dbankcloud_ru_v2\.bin'" -or
+    $rendererContent -notmatch 'Get-ZapretFakePath' -or
     $rendererContent -notmatch 'blob=game_udp') {
     Add-ValidationError 'Renderer must map immutable allowlisted UDP fakes and keep Game UDP independent from Discord Voice.'
 }
@@ -263,7 +265,7 @@ $rootBatches = @(Get-ChildItem -LiteralPath $strategyDir -Filter '*.bat' -File |
 foreach ($launcher in $expectedPublicLaunchers) {
     if ($rootBatches -notcontains $launcher) { Add-ValidationError "Missing public launcher: $launcher" }
 }
-foreach ($experimentalLauncher in @('general (NEXT AGGRESSIVE).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
+foreach ($experimentalLauncher in @('general (NEXT AGGRESSIVE).bat', 'general (VOICE).bat')) {
     if ($rootBatches -contains $experimentalLauncher) { Add-ValidationError "Experimental launcher must not be public: $experimentalLauncher" }
 }
 foreach ($launcher in $customLauncherNames) {
@@ -298,13 +300,13 @@ if ($releaseBuilderAvailable) {
             Add-ValidationError "Release allowlist is missing: $requiredReleaseFile"
         }
     }
-    foreach ($excludedReleaseFile in @('general (NEXT AGGRESSIVE).bat', 'general (VOICE).bat', 'general (FAKE TLS AUTO).bat', 'general (SIMPLE FAKE).bat')) {
+    foreach ($excludedReleaseFile in @('general (NEXT AGGRESSIVE).bat', 'general (VOICE).bat')) {
         if ($releaseBuilder -match [regex]::Escape("'$excludedReleaseFile'")) {
             Add-ValidationError "Release allowlist includes an experimental launcher: $excludedReleaseFile"
         }
     }
     foreach ($excludedPreset in @(
-        'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
+        'VOICE.txt.in',
         'NEXT AGGRESSIVE.txt.in'
     )) {
         if ($releaseBuilder -notmatch [regex]::Escape("'$excludedPreset'")) {
@@ -344,7 +346,7 @@ function Get-SavedMode([string]$Path, [string]$Default, [string[]]$Allowed) {
         $lines = @(Get-Content -LiteralPath $Path -TotalCount 1)
         if ($lines.Count -gt 0) {
             $value = ([string]$lines[0]).Trim().ToLowerInvariant()
-            if ($value -in $Allowed) { return $value }
+            if (-not $Allowed -or $value -in $Allowed) { return $value }
         }
     }
     return $Default
@@ -407,24 +409,23 @@ if (Test-Path -LiteralPath $alt12Path -PathType Leaf) {
             '--hostlist-domains=discord.media'
             '--payload=tls_client_hello'
             '--out-range=-d10'
-            '--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=8'
+            '--lua-desync=fake:blob=tls_google:repeats=8:tcp_ts=-600000:tcp_ts_up'
             '--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up'
         )
         if (($alt12Discord -join [Environment]::NewLine) -cne ($expectedAlt12Discord -join [Environment]::NewLine)) { Add-ValidationError 'ALT12 candidate does not preserve the isolated Discord media split profile.' }
         $alt12Google = @(Get-ProfileLines -Content $alt12Content -Marker '# Google/YouTube TLS')
-        if ($alt12Google -notcontains '--lua-desync=hostfakesplit:host=www.google.com:ip_id=zero:tcp_ts=-1000:tcp_ts_up') { Add-ValidationError 'ALT12 candidate is missing the isolated Google hostfakesplit profile.' }
-        if ($alt12Discord -contains '--lua-desync=hostfakesplit:host=www.google.com:ip_id=zero:tcp_ts=-1000:tcp_ts_up') { Add-ValidationError 'ALT12 hostfakesplit leaked into the Discord media profile.' }
-        $expectedAlt12General = @(
-            '--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8'
-            '--lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max:tcp_ts_up'
-        )
+        if ($alt12Google -notcontains '--lua-desync=hostfakesplit:host=www.google.com:tcp_ts=-600000:ip_id=zero:tcp_ts_up:repeats=1') { Add-ValidationError 'ALT12 candidate is missing the isolated Google hostfakesplit profile.' }
+        if ($alt12Discord -contains '--lua-desync=hostfakesplit:host=www.google.com:tcp_ts=-600000:ip_id=zero:tcp_ts_up:repeats=1') { Add-ValidationError 'ALT12 hostfakesplit leaked into the Discord media profile.' }
+        $expectedAlt12Split='--lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max:tcp_ts_up'
+        $expectedAlt12Max='--lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up'
         foreach ($marker in @('# General HTTP', '# General TLS', '# IPSet fallback TCP', '# Optional game TCP filter')) {
             $profile = @(Get-ProfileLines -Content $alt12Content -Marker $marker)
-            $profileActions = @($profile | Where-Object { $_ -match '^--lua-desync=' })
-            if (($profileActions -join [Environment]::NewLine) -cne ($expectedAlt12General -join [Environment]::NewLine)) {
-                Add-ValidationError "ALT12 candidate does not preserve the FlowSeal general profile in $marker."
+            if ($profile -notcontains $expectedAlt12Split -or $profile -notcontains $expectedAlt12Max) {
+                Add-ValidationError "ALT12 reference fake/split missing in $marker."
             }
         }
+        $alt12Tls=@(Get-ProfileLines -Content $alt12Content -Marker '# General TLS')
+        if ($alt12Tls -notcontains '--lua-desync=fake:blob=stun:repeats=8:tcp_ts=-600000:tcp_ts_up') { Add-ValidationError 'ALT12 lost the first STUN TLS fake.' }
         $alt12IpSetTcp = @(Get-ProfileLines -Content $alt12Content -Marker '# IPSet fallback TCP')
         if ($alt12IpSetTcp -notcontains '--filter-tcp=80,443,8443') { Add-ValidationError 'ALT12 candidate does not include the FlowSeal IPSet TCP port 8443.' }
         if ($alt12Content -notmatch 'tls_clienthello_max_ru\.bin') { Add-ValidationError 'ALT12 candidate does not reference tls_clienthello_max_ru.bin.' }
@@ -674,7 +675,7 @@ foreach ($gameMode in $gameModes) {
                 $safeName = $name -replace ' ', '_'
                 $output = Join-Path $runtimeDir ("{0}-g-{1}-i-{2}-v-{3}.txt" -f $safeName, $gameMode, $ipsetMode, $voiceMode)
                 try {
-                    & $renderer -Preset $name -Output $output -GameMode $gameMode -IPSetMode $ipsetMode -VoiceMode $voiceMode -DiscordFake current -GameFake current | Out-Null
+                    & $renderer -Preset $name -Output $output -GameMode $gameMode -IPSetMode $ipsetMode -VoiceMode $voiceMode -DiscordFake current -GameFake current -GameTcpPorts '1024-65535' -GameUdpPorts '1024-65535' | Out-Null
                     $renderCount++
                 } catch {
                     Add-ValidationError "$label render failed: $($_.Exception.Message)"
@@ -715,10 +716,17 @@ foreach ($gameMode in $gameModes) {
                 if ($gameUdpProfile.Count -eq 0 -or $gameUdpProfile[0] -ne "--filter-udp=$expectedUdp") {
                     Add-ValidationError "$label has the wrong Game UDP profile."
                 }
-                if (($name -ne 'EXP' -and $gameUdpProfile -notcontains '--lua-desync=fake:blob=game_udp:repeats=10:payload=all') -or
-                    ($name -eq 'EXP' -and ($gameUdpProfile -notcontains '--lua-desync=fake:blob=game_udp:repeats=5:payload=all' -or
-                    $gameUdpProfile -notcontains '--lua-desync=fake:blob=quic_4pda:repeats=5:payload=all'))) {
+                if (($gameUdpProfile -join "`n") -notmatch '--lua-desync=fake:blob=game_udp:repeats=\d+:payload=all' -or
+                    ($gameUdpProfile -join "`n") -match 'blob=discord_voice') {
                     Add-ValidationError "$label does not keep the Game UDP fake independent from Discord Voice."
+                }
+                foreach ($marker in @('# IPSet fallback UDP','# IPSet fallback TCP')) {
+                    $fallback=@(Get-ProfileLines -Content $content -Marker $marker)
+                    if ($fallback.Count) {
+                        foreach ($exclude in @('list-exclude.txt','list-exclude-user.txt')) {
+                            if (($fallback -join "`n") -notmatch ('--hostlist-exclude=.*' + [regex]::Escape($exclude))) { Add-ValidationError "$label lost $exclude in $marker." }
+                        }
+                    }
                 }
 
                 $expectedVoiceProfile = switch ($voiceMode) {
@@ -765,7 +773,7 @@ foreach ($gameMode in $gameModes) {
                     Add-ValidationError "$label does not keep Discord Voice before the Game UDP fallback."
                 }
 
-                $expectedWfUdp = if (($voiceMode -eq 'compatible' -and -not $hasPresetVoice) -or $gameMode -in @('udp', 'all')) {
+                $expectedWfUdp = if ($voiceMode -eq 'compatible' -and -not $hasPresetVoice) {
                     '1024-65535'
                 } else {
                     "443,19294-19344,50000-50100,$expectedUdp"
@@ -781,7 +789,8 @@ foreach ($gameMode in $gameModes) {
                     $ipsetFile = if ($ipsetMode -eq 'loaded' -and $loadedIPSetHasEntries) { 'ipset-all.txt' } else { 'ipset-none.txt' }
                     $expectedIPSetPath = [IO.Path]::GetFullPath((Join-Path $root "lists\$ipsetFile")).Replace('\', '/')
                     $expectedIPSetLine = '--ipset="' + $expectedIPSetPath + '"'
-                    if ($ipsetLines.Count -ne 4 -or @($ipsetLines | Where-Object { $_ -eq $expectedIPSetLine }).Count -ne 4) {
+                    $expectedIPSetCount=if ($name -eq 'ALT5') {3} else {4}
+                    if ($ipsetLines.Count -ne $expectedIPSetCount -or @($ipsetLines | Where-Object { $_ -eq $expectedIPSetLine }).Count -ne $expectedIPSetCount) {
                         Add-ValidationError "$label does not use the stable $ipsetMode IPSet source in every fallback profile."
                     }
                 }
@@ -860,8 +869,8 @@ try {
     $savedGameMode = Get-SavedMode (Join-Path $root 'utils\game_filter.mode') 'off' @('off', 'tcp', 'udp', 'all')
     $savedIPSetMode = Get-SavedMode (Join-Path $root 'utils\ipset_filter.mode') 'loaded' @('loaded', 'none', 'any')
     $savedVoiceMode = Get-SavedMode (Join-Path $root 'utils\voice_filter.mode') 'compatible' @('compatible', 'standard', 'off')
-    $savedDiscordFake = Get-SavedMode (Join-Path $root 'utils\discord_fake.mode') 'current' @('current', 'steam', 'google')
-    $savedGameFake = Get-SavedMode (Join-Path $root 'utils\game_fake.mode') 'current' @('current', 'dbank-v2', 'steam')
+    $savedDiscordFake = Get-SavedMode (Join-Path $root 'utils\discord_fake.mode') 'current' @()
+    $savedGameFake = Get-SavedMode (Join-Path $root 'utils\game_fake.mode') 'current' @()
     foreach ($header in @(
         "# Game filter: $savedGameMode",
         "# IPSet filter: $savedIPSetMode",
@@ -903,11 +912,13 @@ $forbidden = $sourceFiles |
     Select-String -Pattern $brandingPattern -CaseSensitive:$false
 foreach ($hit in $forbidden) {
     $brandingLine = $hit.Line
+    if ($hit.Path -eq (Join-Path $root 'docs\CLASSIC.md')) { $brandingLine = $brandingLine -replace 'import-flowseal\.py', '' }
     if ($hit.Path -in $telegramCreditPaths) {
         # Credit the bundled upstreams without allowing unrelated branding.
         if ($hit.Path -in @((Join-Path $root 'README.md'), (Join-Path $root 'docs\ADVANCED.md'))) {
             $brandingLine = $brandingLine -replace '^(\*\*Classic\*\*.*)Flowseal(\. \*\*NEXT\*\*.*)$', '$1$2'
         }
+        $brandingLine = $brandingLine -replace 'import-flowseal\.py', ''
         $brandingLine = $brandingLine -replace '(?i)https://github\.com/Flowseal/tg-ws-proxy\b', ''
         $brandingLine = $brandingLine -replace '(?i)\bFlowseal(?:/tg-ws-proxy|''s tg-ws-proxy)\b', ''
     }

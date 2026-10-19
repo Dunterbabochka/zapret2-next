@@ -81,13 +81,19 @@ function New-InstalledFixture([string]$Destination) {
     Write-FixtureText (Join-Path $Destination '.service\version.txt') '9.9.0'
     Initialize-ZapretLog -Root $Destination -Component update -Action Check
     Write-FixtureText (Join-Path $Destination 'utils\game_filter.mode') "all`r`n"
+    Write-FixtureText (Join-Path $Destination 'utils\game_tcp.ports') "1234,4000-4010`r`n"
+    Write-FixtureText (Join-Path $Destination 'utils\game_udp.ports') "27015`r`n"
+    . (Join-Path $sourceRoot 'utils\config-settings.ps1')
+    $choice=@(Get-ZapretFakeChoices $Destination | Where-Object Name -eq 'stun2.bin')[0]
+    $customFake=Import-ZapretFake $Destination $choice
+    Write-FixtureText (Join-Path $Destination 'utils\discord_fake.mode') ($customFake+"`r`n")
     Write-FixtureText (Join-Path $Destination 'utils\check_updates.enabled') "enabled`r`n"
     Write-FixtureText (Join-Path $Destination 'lists\list-general-user.txt') "# private`r`nmy-domain.example`r`n"
     Write-FixtureText (Join-Path $Destination 'lists\list-general.txt') "# customized base list`r`nexample.com`r`n"
     Write-FixtureText (Join-Path $Destination 'runtime\history\report.txt') 'preserved history'
     Write-FixtureText (Join-Path $Destination 'runtime\telegram\S-1-5-21-123\config.json') '{"port":1443,"secret":"private-fixture-secret"}'
     # Applied Game=off, pending menu Game=all must remain distinct.
-    & (Join-Path $Destination 'utils\render-config.ps1') -Preset general -GameMode off -IPSetMode loaded -VoiceMode compatible -DiscordFake current -GameFake current -Output (Join-Path $Destination 'runtime\service.txt') | Out-Null
+    & (Join-Path $Destination 'utils\render-config.ps1') -Preset general -GameMode off -IPSetMode loaded -VoiceMode compatible -DiscordFake $customFake -GameFake current -GameTcpPorts '1024-65535' -GameUdpPorts '1024-65535' -Output (Join-Path $Destination 'runtime\service.txt') | Out-Null
 }
 function Reset-PreparedFixture {
     if (Test-Path -LiteralPath $script:install) { Remove-ReleaseTree $fixture $script:install }
@@ -113,6 +119,9 @@ function Assert-Preserved([string]$Root) {
     }
     Assert-Update (([IO.File]::ReadAllText((Join-Path $Root 'utils\game_filter.mode'))).Trim() -eq 'all') 'Pending mode was lost'
     Assert-Update ((Get-ReleaseConfigOptions (Join-Path $Root 'runtime\service.txt')).GameMode -eq 'off') 'Pending settings replaced the applied configuration'
+    $applied=Get-ReleaseConfigOptions (Join-Path $Root 'runtime\service.txt')
+    Assert-Update ($applied.GameTcpPorts -eq '1024-65535' -and $applied.GameUdpPorts -eq '1024-65535') 'Pending game ports replaced the applied ranges'
+    Assert-Update ($applied.DiscordFake -match '^custom:' -and [IO.File]::Exists((Get-ZapretFakePath $Root $applied.DiscordFake Discord))) 'Custom fake did not survive update/rollback'
     Assert-Update (([IO.File]::ReadAllText((Join-Path $Root 'lists\list-general-user.txt'))).Contains('my-domain.example')) 'User list was overwritten'
     Assert-Update (([IO.File]::ReadAllText((Join-Path $Root 'lists\list-general.txt'))).Contains('customized base list')) 'Base list was overwritten'
     Assert-Update ([IO.File]::ReadAllText((Join-Path $Root 'runtime\history\report.txt')) -eq 'preserved history') 'History was lost'

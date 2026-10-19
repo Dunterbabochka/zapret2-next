@@ -49,3 +49,11 @@ localizeapi.com
 klipy.com
 zendesk.com
 live-video.net
+^dns.google
+^dns.quad9.net
+^dns.nextdns.io
+^doh.opendns.com
+^doh.cleanbrowsing.org
+^freedns.controld.com
+^wikimedia-dns.org
+^cloudflare-dns.com

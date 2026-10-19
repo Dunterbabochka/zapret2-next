@@ -42,4 +42,4 @@ body:
     id: strategy
     attributes:
       label: Стратегия
-      options: [Ни одна не подошла, general, ALT, ALT3, ALT5, ALT11, ALT12, ALT13, EXP, FAKE TLS AUTO ALT2, NEXT SAFE, NEXT BALANCED]
+      options: [Ни одна не подошла, general, ALT, ALT2, ALT3, ALT4, ALT5, ALT6, ALT7, ALT8, ALT9, ALT10, ALT11, ALT12, ALT13, EXP, FAKE TLS AUTO, FAKE TLS AUTO ALT, FAKE TLS AUTO ALT2, FAKE TLS AUTO ALT3, SIMPLE FAKE, SIMPLE FAKE ALT, SIMPLE FAKE ALT2, NEXT SAFE, NEXT BALANCED]

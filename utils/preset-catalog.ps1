@@ -1,9 +1,7 @@
 # Preset catalogue shared by the wizard, simulations and validation.
 #
-# $classicPresets, $nextPresets and $publicPresets keep their original contract:
-# the release builder, the compatibility wizard and the support diagnostics all
-# iterate $publicPresets, and the wizard asserts its exact size. Do not rename or
-# redefine it.
+# Installation, release packaging, wizard and support diagnostics share this
+# catalogue: 22 Classic variants from the local reference and two NEXT presets.
 #
 # Local additions are a separate layer: presets that live in presets\ but are
 # neither shipped nor hidden are discovered from disk, shown in their own
@@ -11,12 +9,14 @@
 # ones. To add a strategy, drop presets\<NAME>.txt.in into the bundle and,
 # optionally, strategies\general (<NAME>).bat. Nothing else has to be edited.
 
-$classicPresets = @('general', 'ALT', 'ALT3', 'ALT5', 'ALT11', 'ALT12', 'ALT13', 'EXP', 'FAKE TLS AUTO ALT2')
+$classicPresets = @('general', 'ALT', 'ALT2', 'ALT3', 'ALT4', 'ALT5', 'ALT6', 'ALT7', 'ALT8', 'ALT9',
+    'ALT10', 'ALT11', 'ALT12', 'ALT13', 'EXP', 'FAKE TLS AUTO', 'FAKE TLS AUTO ALT',
+    'FAKE TLS AUTO ALT2', 'FAKE TLS AUTO ALT3', 'SIMPLE FAKE', 'SIMPLE FAKE ALT', 'SIMPLE FAKE ALT2')
 $nextPresets = @('NEXT SAFE', 'NEXT BALANCED')
 $publicPresets = @($classicPresets + $nextPresets)
 
 # Presets that exist in the bundle but must stay hidden from the install menu.
-$hiddenPresets = @('NEXT AGGRESSIVE', 'VOICE', 'FAKE TLS AUTO', 'SIMPLE FAKE')
+$hiddenPresets = @('NEXT AGGRESSIVE', 'VOICE')
 
 # Files in presets\ that are templates rather than strategies.
 $presetTemplateNames = @('_base', '_profiles')

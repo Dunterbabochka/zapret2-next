@@ -36,6 +36,15 @@ additional payloads were copied byte-for-byte from that reference:
 - `stun2.bin`: SHA256 `B7C2497496039C541F7337AC8536813F0A1CF52363AB2FAA5213B7816D458813`.
 - `quic_initial_4pda_to.bin`: SHA256 `E065870CB0D13152E6132807BBF42218A9E7CD8D96F5602B61674CC540F3A56E`.
 
+On 2026-10-19, all 22 Classic presets were adapted from the same local Flowseal 1.10.3 reference, alongside its additional hostlist entries and diagnostic checks. Source command-file SHA256 values are recorded in `packaging/classic-reference.json`. Engine binaries and the pinned upstream Lua libraries were not replaced. Additional fake payloads, also available through the manual UDP selector, are:
+
+- `quic_initial_5ka_ru.bin`: SHA256 `247DCD97F53BFAE5482E4B2B66ACDB01E48EE6C29C5CA526C9B241FA38C233B5`.
+- `quic_initial_rutube_ru.bin`: SHA256 `74B1DFBDEC125263C9407436658B0A848B8F0A934B8063D11571A6A2146A4A7B`.
+- `quic_initial_tencent_com.bin`: SHA256 `D250051D6200946A7BA0629C59C5641432957FA3513081A6C3C5AAA91A62AC03`.
+- `tls_clienthello_4pda_to.bin`: SHA256 `EEFEAF09DDE8D69B1F176212541F63C68B314A33A335ECED99A8A29F17254DA8`.
+- `tls_clienthello_5ka_ru.bin`: SHA256 `1E8871E272591C5A277D38A6166AF597C1FECB1CF58E85162E8F1968EC08D018`.
+- `tls_clienthello_www_sferum_ru.bin`: SHA256 `E6DD8D724EECC6A7340BF64E2EBEC81C60BC4E078C6F702B4B6BA9BF184180AD`.
+
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights

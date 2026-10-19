@@ -28,8 +28,8 @@ function Invoke-WizardContractValidation {
     $errors = [Collections.Generic.List[string]]::new()
     try { $targets = @(Get-WizardTargets) } catch { Write-ZapretLogException $_ -Warning; $errors.Add($_.Exception.Message); $targets = @() }
 
-    if ($publicPresets.Count -ne 11 -or @($publicPresets | Sort-Object -Unique).Count -ne 11) {
-        $errors.Add('The wizard must expose exactly eleven unique public presets.')
+    if ($classicPresets.Count -ne 22 -or $publicPresets.Count -ne 24 -or @($publicPresets | Sort-Object -Unique).Count -ne 24) {
+        $errors.Add('The wizard must expose 22 Classic and two NEXT presets without duplicates.')
     }
     foreach ($preset in $publicPresets) {
         if (-not (Test-Path -LiteralPath (Join-Path $root "presets\$preset.txt.in") -PathType Leaf)) {

@@ -32,6 +32,15 @@ jobs:
       - name: Validate
         shell: pwsh
         run: ./utils/validate.ps1
+      - name: Validate Classic runtime, game ports and DPI transfer probes
+        shell: powershell
+        run: |
+          ./utils/validate-enhancements.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s packaging -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/smoke-presets.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Validate update and service rollback
         shell: powershell
         run: ./utils/validate-stability.ps1

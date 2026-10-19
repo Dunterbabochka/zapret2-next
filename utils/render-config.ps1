@@ -15,11 +15,12 @@
     [ValidateSet('compatible', 'standard', 'off')]
     [string]$VoiceMode,
 
-    [ValidateSet('current', 'steam', 'google')]
     [string]$DiscordFake,
 
-    [ValidateSet('current', 'dbank-v2', 'steam')]
     [string]$GameFake,
+
+    [string]$GameTcpPorts,
+    [string]$GameUdpPorts,
 
     [string]$DebugLog,
 
@@ -36,6 +37,7 @@ try {
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'config-settings.ps1')
 . (Join-Path $PSScriptRoot 'bundle-operation.ps1')
 $bundleGate = Enter-ZapretBundleOperation $root
 try {
@@ -99,7 +101,7 @@ function Get-ModeSetting {
         $lines = @(Get-Content -LiteralPath $path -TotalCount 1)
         if ($lines.Count -gt 0) {
             $value = ([string]$lines[0]).Trim().ToLowerInvariant()
-            if ($value -in $Allowed) { return $value }
+            if (-not $Allowed -or $value -in $Allowed) { return $value }
         }
     }
     return $Default
@@ -108,26 +110,14 @@ function Get-ModeSetting {
 $gameMode = Get-ModeSetting 'GameMode' 'utils\game_filter.mode' 'off' @('off', 'tcp', 'udp', 'all')
 $ipsetMode = Get-ModeSetting 'IPSetMode' 'utils\ipset_filter.mode' 'loaded' @('loaded', 'none', 'any')
 $voiceMode = Get-ModeSetting 'VoiceMode' 'utils\voice_filter.mode' 'compatible' @('compatible', 'standard', 'off')
-$discordFake = Get-ModeSetting 'DiscordFake' 'utils\discord_fake.mode' 'current' @('current', 'steam', 'google')
-$gameFake = Get-ModeSetting 'GameFake' 'utils\game_fake.mode' 'current' @('current', 'dbank-v2', 'steam')
-$discordFakeFiles = @{
-    'current' = 'quic_initial_dbankcloud_ru.bin'
-    'steam' = 'quic_initial_steamcommunity_com.bin'
-    'google' = 'quic_initial_www_google_com.bin'
-}
-$gameFakeFiles = @{
-    'current' = 'quic_initial_dbankcloud_ru.bin'
-    'dbank-v2' = 'quic_initial_dbankcloud_ru_v2.bin'
-    'steam' = 'quic_initial_steamcommunity_com.bin'
-}
-$discordFakeFile = $discordFakeFiles[$discordFake]
-$gameFakeFile = $gameFakeFiles[$gameFake]
-foreach ($fakeFile in @($discordFakeFile, $gameFakeFile)) {
-    $fakePath = Join-Path $root "bin\fake\$fakeFile"
-    if (-not (Test-Path -LiteralPath $fakePath -PathType Leaf)) {
-        throw "Selected UDP fake not found: $fakePath"
-    }
-}
+$discordFake = Get-ModeSetting 'DiscordFake' 'utils\discord_fake.mode' 'current' @()
+$gameFake = Get-ModeSetting 'GameFake' 'utils\game_fake.mode' 'current' @()
+$discordFakePath = Get-ZapretFakePath $root $discordFake Discord
+$gameFakePath = Get-ZapretFakePath $root $gameFake Game
+$discordFakeFile = [IO.Path]::GetFileName($discordFakePath)
+$gameFakeFile = [IO.Path]::GetFileName($gameFakePath)
+$gameTcpPorts = if ($parameterOverrides.ContainsKey('GameTcpPorts')) { ConvertTo-ZapretPortRange $GameTcpPorts } else { Get-ZapretGamePorts $root tcp }
+$gameUdpPorts = if ($parameterOverrides.ContainsKey('GameUdpPorts')) { ConvertTo-ZapretPortRange $GameUdpPorts } else { Get-ZapretGamePorts $root udp }
 $hasPresetCompatibleVoice = $sections.ContainsKey('VOICE_COMPATIBLE') -and $sections['VOICE_COMPATIBLE'].Count -gt 0
 $ipsetTcpPorts = @()
 if ($sections.ContainsKey('IPSET_TCP_PORTS')) {
@@ -144,9 +134,9 @@ $ipsetTcpFilter = if ($ipsetTcpPorts.Count -gt 0) {
     '80,443'
 }
 
-$gameTcp = if ($gameMode -in @('tcp', 'all')) { '1024-65535' } else { '12' }
-$gameUdp = if ($gameMode -in @('udp', 'all')) { '1024-65535' } else { '12' }
-$wfUdp = if ($gameMode -in @('udp', 'all') -or ($voiceMode -eq 'compatible' -and -not $hasPresetCompatibleVoice)) {
+$gameTcp = if ($gameMode -in @('tcp', 'all')) { $gameTcpPorts } else { '12' }
+$gameUdp = if ($gameMode -in @('udp', 'all')) { $gameUdpPorts } else { '12' }
+$wfUdp = if ($voiceMode -eq 'compatible' -and -not $hasPresetCompatibleVoice) {
     '1024-65535'
 } else {
     "443,19294-19344,50000-50100,$gameUdp"
@@ -162,11 +152,12 @@ function Get-PresetSection([string]$Name, [string]$Default = '') {
 }
 $content = $content.Replace('{{PRESET_INIT}}', (Get-PresetSection 'PRESET_INIT'))
 $content = $content.Replace('{{QUIC_FILTER}}', (Get-PresetSection 'QUIC_FILTER' '--filter-udp=443'))
-$content = $content.Replace('{{IPSET_TCP_EXCLUDE}}', (Get-PresetSection 'IPSET_TCP_EXCLUDE'))
-$content = $content.Replace('{{IPSET_UDP_EXCLUDE}}', (Get-PresetSection 'IPSET_UDP_EXCLUDE'))
+$defaultExclusions = "--hostlist-exclude=../lists/list-exclude.txt`r`n--hostlist-exclude=../lists/list-exclude-user.txt"
+$content = $content.Replace('{{IPSET_TCP_EXCLUDE}}', ($defaultExclusions + "`r`n" + (Get-PresetSection 'IPSET_TCP_EXCLUDE')))
+$content = $content.Replace('{{IPSET_UDP_EXCLUDE}}', ($defaultExclusions + "`r`n" + (Get-PresetSection 'IPSET_UDP_EXCLUDE')))
 $content = $content.Replace('{{GAME_TCP_ACTIONS}}', (Get-PresetSection 'GAME_TCP_ACTIONS' ($sections['TCP_GENERIC'] -join "`r`n")))
 $gameTcpRange = Get-PresetSection 'GAME_TCP_RANGE' '-d4'
-if ($gameTcpRange -notin @('-d4', '-n4')) { throw "Invalid [GAME_TCP_RANGE] in $presetPath" }
+if ($gameTcpRange -notmatch '^[-<][nd][1-9][0-9]?$') { throw "Invalid [GAME_TCP_RANGE] in $presetPath" }
 $content = $content.Replace('{{GAME_TCP_RANGE}}', $gameTcpRange)
 foreach ($name in $required) {
     $value = ($sections[$name] -join "`r`n").Trim()
@@ -204,6 +195,11 @@ $content = $content.Replace('{{GOOGLE_TLS}}', $googleTls)
 $content = $content.Replace('{{DISCORD_WEB_TLS}}', $discordWebTls)
 $content = $content.Replace('{{DISCORD_WEB_PROFILE}}', $discordWebProfile)
 $content = $content.Replace('{{IPSET_TCP_FILTER}}', $ipsetTcpFilter)
+if ($sections.ContainsKey('CLASSIC_TCP_PROFILE')) {
+    $classicTcp = Get-PresetSection 'CLASSIC_TCP_PROFILE'
+    $content = [regex]::Replace($content, '(?ms)# Discord media TLS\r?\n.*?(?=# IPSet fallback UDP)', ($classicTcp + "`r`n--new`r`n`r`n"))
+    $content = [regex]::Replace($content, '(?ms)# IPSet fallback TCP\r?\n.*?(?=# Optional game TCP filter)', '')
+}
 $voiceUdpProfile = switch ($voiceMode) {
     'compatible' {
         if ($hasPresetCompatibleVoice) {
@@ -256,13 +252,15 @@ $ipsetInclude = switch ($ipsetMode) {
 }
 $content = $content.Replace('{{IPSET_INCLUDE}}', $ipsetInclude)
 
+$gameUdpRange = Get-PresetSection 'GAME_UDP_RANGE' '-n4'
+if ($gameUdpRange -notmatch '^[-<][nd][1-9][0-9]?$') { throw "Invalid [GAME_UDP_RANGE] in $presetPath" }
 $gameUdpProfile = @(
         "--filter-udp=$gameUdp"
         '{{IPSET_INCLUDE}}'
         '--ipset-exclude=../lists/ipset-exclude.txt'
         '--ipset-exclude=../lists/ipset-exclude-user.txt'
         '--payload=all'
-        '--out-range=-n4'
+        "--out-range=$gameUdpRange"
         (Get-PresetSection 'GAME_UDP_ACTIONS' '--lua-desync=fake:blob=game_udp:repeats=10:payload=all')
     ) -join "`r`n"
 $gameUdpProfile = $gameUdpProfile.Replace('{{IPSET_INCLUDE}}', $ipsetInclude)
@@ -275,6 +273,10 @@ $content = $content.Replace('{{DISCORD_FAKE}}', $discordFake)
 $content = $content.Replace('{{GAME_FAKE}}', $gameFake)
 $content = $content.Replace('{{DISCORD_FAKE_FILE}}', $discordFakeFile)
 $content = $content.Replace('{{GAME_FAKE_FILE}}', $gameFakeFile)
+$content = $content.Replace('{{DISCORD_FAKE_PATH}}', $discordFakePath.Replace('\','/'))
+$content = $content.Replace('{{GAME_FAKE_PATH}}', $gameFakePath.Replace('\','/'))
+$content = $content.Replace('{{GAME_TCP_PORTS}}', $gameTcpPorts)
+$content = $content.Replace('{{GAME_UDP_PORTS}}', $gameUdpPorts)
 $content = $content.Replace('{{GAME_TCP}}', $gameTcp)
 $content = $content.Replace('{{GAME_UDP}}', $gameUdp)
 $content = $content.Replace('{{WF_UDP}}', $wfUdp)

@@ -116,6 +116,7 @@ function ConvertTo-ZapretSafeEvent($Event) {
     elseif ($sourceDetails -is [pscustomobject]) { foreach ($property in $sourceDetails.PSObject.Properties) { $pairs[$property.Name]=$property.Value } }
     foreach ($key in $pairs.Keys) {
         $value=$pairs[$key]
+        if ($key -in @('discordFake','gameFake','oldValue','newValue') -and [string]$value -cmatch '^custom:[a-f0-9]{64}$') { $value='custom' }
         if ($key -in @('durationMs','exitCode','httpCode','curlCode','attempt','count','line','hresult','nativeErrorCode','bytes','port')) {
             $number=[long]0
             if ([long]::TryParse([string]$value,[ref]$number)) { $details[$key]=$number }
@@ -124,12 +125,12 @@ function ConvertTo-ZapretSafeEvent($Event) {
         } elseif ($key -in @('version','fromVersion','toVersion','engineVersion','windowsVersion')) {
             if ([string]$value -match '^\d{1,5}(?:\.\d{1,5}){1,3}(?:-(?:alpha|beta|rc)(?:[.\d-])*)?$') { $details[$key]=[string]$value }
         } elseif ($key -in @('game','ipset','voice','discordFake','gameFake','oldValue','newValue')) {
-            if ([string]$value -in @('off','tcp','udp','all','loaded','none','any','standard','compatible','current','steam','google','dbank-v2','enabled','disabled')) { $details[$key]=[string]$value }
+            if ([string]$value -in @('off','tcp','udp','all','loaded','none','any','standard','compatible','current','steam','google','dbank-v2','enabled','disabled','custom')) { $details[$key]=[string]$value }
         } else {
             $allowed=switch -Exact ($key) {
-                'setting' { @('game_filter.mode','ipset_filter.mode','voice_filter.mode','discord_fake.mode','game_fake.mode','check_updates.enabled','fake-defaults') }
+                'setting' { @('game_filter.mode','ipset_filter.mode','voice_filter.mode','discord_fake.mode','game_fake.mode','check_updates.enabled','fake-defaults','game_tcp.ports','game_udp.ports') }
                 'preset' {
-                    $knownPresets=@('general','ALT','ALT3','ALT5','ALT11','ALT12','ALT13','EXP','FAKE TLS AUTO ALT2','NEXT SAFE','NEXT BALANCED','VOICE','CUSTOM SAFE','CUSTOM BALANCED','CUSTOM UNIVERSAL','CUSTOM')
+                    $knownPresets=@('general','ALT','ALT2','ALT4','ALT6','ALT7','ALT8','ALT9','ALT10','FAKE TLS AUTO','FAKE TLS AUTO ALT','FAKE TLS AUTO ALT3','SIMPLE FAKE','SIMPLE FAKE ALT','SIMPLE FAKE ALT2','ALT3','ALT5','ALT11','ALT12','ALT13','EXP','FAKE TLS AUTO ALT2','NEXT SAFE','NEXT BALANCED','VOICE','CUSTOM SAFE','CUSTOM BALANCED','CUSTOM UNIVERSAL','CUSTOM')
                     # Local names are arbitrary user input, including when a
                     # preset exists. Keep them out of sendable logs and do not
                     # depend on templates still being present during recovery.

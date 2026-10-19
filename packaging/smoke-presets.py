@@ -2,14 +2,14 @@
 from pathlib import Path
 import argparse
 import ctypes
+import json
 import os
 import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'runtime' / 'preset-smoke'
-PRESETS = ['general', 'ALT', 'ALT3', 'ALT5', 'ALT11', 'ALT12', 'ALT13', 'EXP',
-           'FAKE TLS AUTO ALT2', 'NEXT SAFE', 'NEXT BALANCED']
+PRESETS = [entry['preset'] for entry in json.loads((ROOT / 'packaging/classic-reference.json').read_text())] + ['NEXT SAFE', 'NEXT BALANCED']
 
 
 def run(args):
@@ -66,14 +66,14 @@ def main():
         # Verify the behaviors most likely to get lost in a Zapret 1 -> 2 translation.
         text = config.read_text(encoding='utf-8')
         if preset == 'ALT13':
-            assert '--lua-desync=next_hostfakesplit:host=mail.ru:tcp_ts=-1000:tcp_ts_up:repeats=5' in text
-            assert '--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=7' in text
+            assert '--lua-desync=next_hostfakesplit:host=mail.ru:tcp_ts=-600000:tcp_ts_up:repeats=5' in text
+            assert '--lua-desync=fake:blob=tls_google:repeats=7:tcp_ts=-600000:tcp_ts_up' in text
             assert '--lua-desync=fake:blob=discord_voice:repeats=5' in text
         if preset == 'EXP':
             assert '--filter-l7=quic' in text
             assert '--hostlist-exclude-domains=fonts.googleapis.com' in text
             assert '--lua-desync=multisplit:pos=1:seqovl=480:seqovl_pattern=stun2:tcp_ts_up' in text
-            assert '--lua-desync=fake:blob=unknown_tcp:tcp_ts=-1000:repeats=8:payload=unknown' in text
+            assert '--lua-desync=fake:blob=0x' + '00' * 256 + ':repeats=8:tcp_ts=-600000:tcp_ts_up:payload=unknown' in text
             assert '--lua-desync=fake:blob=quic_4pda:repeats=5:payload=all' in text
             assert '--lua-desync=fake:blob=game_udp:repeats=5:payload=all' in text
         print(f'[OK] {preset}: arguments and blobs' + ('' if options.arguments_only else ', Lua load'), flush=True)

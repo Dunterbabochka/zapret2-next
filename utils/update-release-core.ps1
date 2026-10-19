@@ -9,7 +9,7 @@
 
 $script:releaseFiles = @('README.md','LICENSE.txt','SECURITY.md','THIRD_PARTY_NOTICES.md','ENGINE_VERSION','SHA256SUMS.txt','service.bat')
 $script:releaseDirectories = @('bin','lua','presets','strategies','utils','docs','.service')
-$script:releaseModeNames = @('game_filter.mode','ipset_filter.mode','voice_filter.mode','discord_fake.mode','game_fake.mode','check_updates.enabled')
+$script:releaseModeNames = @('game_filter.mode','game_tcp.ports','game_udp.ports','ipset_filter.mode','voice_filter.mode','discord_fake.mode','game_fake.mode','check_updates.enabled')
 
 function Assert-ReleaseChildPath([string]$Parent, [string]$Path) {
     $base = [IO.Path]::GetFullPath($Parent).TrimEnd('\') + '\'

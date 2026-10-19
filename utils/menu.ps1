@@ -59,11 +59,16 @@ function Get-ZapretMenuModes {
             $reader=$null
             try {
                 $reader=[IO.StreamReader]::new($path,[Text.Encoding]::Default,$true)
-                $value=$reader.ReadLine(); if ($value -in $allowed[$name]) { $defaults[$name]=$value }
+                $value=$reader.ReadLine()
+                if ($value -in $allowed[$name] -or ($name -in @('DiscordFake','GameFake') -and (Test-ZapretFakeSelection $value $(if ($name -eq 'DiscordFake') {'Discord'} else {'Game'})))) { $defaults[$name]=$value }
             } catch { Write-ZapretLogException $_ -Warning }
             finally { if ($reader) { $reader.Dispose() } }
         }
     }
+    $defaults.GameTcpPorts=try { Get-ZapretGamePorts $root tcp } catch { 'invalid - set TCP ports' }
+    $defaults.GameUdpPorts=try { Get-ZapretGamePorts $root udp } catch { 'invalid - set UDP ports' }
+    $defaults.DiscordFakeLabel=Get-ZapretFakeLabel $defaults.DiscordFake
+    $defaults.GameFakeLabel=Get-ZapretFakeLabel $defaults.GameFake
     $defaults.Update=if ([IO.File]::Exists((Join-Path $root 'utils\check_updates.enabled'))) {'enabled'} else {'disabled'}
     $defaults
 }
@@ -90,7 +95,7 @@ function Show-ZapretMenu([object]$Service,[hashtable]$Modes,[string]$Telegram) {
     $version=try { Get-ReleaseVersion $root } catch {'unknown'}
     Write-Host "`n  ZAPRET 2 NEXT SERVICE MANAGER v$version"
     Write-Host "  Strategy: $($Service.Preset)   Game: $($Modes.Game)   IPSet: $($Modes.IPSet)   Voice: $($Modes.Voice)"
-    Write-Host "  UDP fakes: Discord=$($Modes.DiscordFake)   Game=$($Modes.GameFake)"
+    Write-Host "  UDP fakes: Discord=$($Modes.DiscordFakeLabel)   Game=$($Modes.GameFakeLabel)"
     Write-Host "  Service: $($Service.State)"
     Write-Host "  Telegram: $Telegram"
     Write-Host '  -----------------------------------------------'
@@ -100,7 +105,7 @@ function Show-ZapretMenu([object]$Service,[hashtable]$Modes,[string]$Telegram) {
     Write-Host "      5. IPSet Filter        [$($Modes.IPSet)]"
     Write-Host "      6. Auto-Update Check   [$($Modes.Update)]"
     Write-Host "      7. Discord Voice       [$($Modes.Voice)]"
-    Write-Host "      8. UDP Fake Profiles   [D:$($Modes.DiscordFake) / G:$($Modes.GameFake)]"
+    Write-Host "      8. UDP Fake Profiles   [D:$($Modes.DiscordFakeLabel) / G:$($Modes.GameFakeLabel)]"
     Write-Host "      9. Telegram            [$Telegram]"
     Write-Host "`n  :: UPDATES`n     10. Update IPSet List`n     11. Update Hosts File`n     12. Check for Updates"
     Write-Host "`n  :: TOOLS`n     13. Run Diagnostics`n     14. Run Tests`n     15. Clear Discord Cache"
@@ -142,7 +147,7 @@ function Install-ZapretMenuService {
     if ($pick -notmatch '^\d+$' -or -not [int]::TryParse($pick,[ref]$selection) -or $selection -lt 1 -or $selection -gt $presets.Count) { throw 'Invalid preset selection.' }
     $selected=$presets[$selection-1]
     Write-Host "`nSelected configuration:`n  Strategy: $selected   Game: $($modes.Game)   IPSet: $($modes.IPSet)   Voice: $($modes.Voice)"
-    Write-Host "  UDP fakes: Discord=$($modes.DiscordFake)   Game=$($modes.GameFake)"
+    Write-Host "  UDP fakes: Discord=$($modes.DiscordFakeLabel)   Game=$($modes.GameFakeLabel)"
     if ((Read-ZapretMenuLine 'Install this service configuration? [Y/n]: ') -ieq 'N') { return }
     $ipset=if ($modes.IPSet -eq 'any') {'loaded'} else {$modes.IPSet}
     if ($modes.IPSet -eq 'any') { Write-Host 'IPSet any is diagnostic-only; service installation will use loaded.' -ForegroundColor Yellow }
@@ -155,8 +160,9 @@ function Show-ZapretMenuStatus {
     $script:telegramStatus=Get-ZapretMenuTelegram
     Write-Host "Service name:       winws2`nService state:      $($service.State)`nSelected strategy:  $($service.Preset)"
     Write-Host "Game filter:        $($modes.Game)`nIPSet filter:       $($modes.IPSet)`nDiscord Voice:      $($modes.Voice)"
-    Write-Host "Discord UDP fake:   $($modes.DiscordFake)`nGame UDP fake:      $($modes.GameFake)"
-    Write-Host "Configuration:      $($service.Preset) + $($modes.Game) + $($modes.IPSet) + $($modes.Voice) + D:$($modes.DiscordFake) + G:$($modes.GameFake)"
+    Write-Host "Game TCP ports:     $($modes.GameTcpPorts)`nGame UDP ports:     $($modes.GameUdpPorts)"
+    Write-Host "Discord UDP fake:   $($modes.DiscordFakeLabel)`nGame UDP fake:      $($modes.GameFakeLabel)"
+    Write-Host "Configuration:      $($service.Preset) + $($modes.Game) + $($modes.IPSet) + $($modes.Voice) + D:$($modes.DiscordFakeLabel) + G:$($modes.GameFakeLabel)"
     Write-Host "Auto update check:  $($modes.Update)`nTelegram:           $script:telegramStatus"
     Write-Host ('winws2 process:     '+$(if (Test-ZapretMenuEngineProcess) {'running'} else {'not running'}))
     $driver=Get-Service WinDivert -ErrorAction Ignore
@@ -176,32 +182,57 @@ function Set-ZapretMenuMode([int]$Selection) {
     $name=''; $value=''
     switch ($Selection) {
         4 {
-            Write-Host "Select game filter mode:`n  0. Off`n  1. TCP and UDP`n  2. TCP only`n  3. UDP only"
-            $pick=Read-ZapretMenuLine 'Selection (0-3): '
-            if ($pick -notmatch '^[0-3]$') { throw 'Invalid selection.' }
-            $name='game_filter.mode';$value=@('off','all','tcp','udp')[[int]$pick]
+            Write-Host "Select game filter mode:`n  0. Off`n  1. TCP and UDP`n  2. TCP only`n  3. UDP only`n  4. Change TCP ports [$($modes.GameTcpPorts)]`n  5. Change UDP ports [$($modes.GameUdpPorts)]`n  6. Back"
+            $pick=Read-ZapretMenuLine 'Selection (0-6): '
+            if ($pick -eq '6') { return }
+            if ($pick -notmatch '^[0-5]$') { throw 'Invalid selection.' }
+            if ([int]$pick -le 3) { $name='game_filter.mode';$value=@('off','all','tcp','udp')[[int]$pick] }
+            else {
+                $name=if ($pick -eq '4') {'game_tcp.ports'} else {'game_udp.ports'}
+                $inputPorts=Read-ZapretMenuLine 'Ports/ranges (e.g. 1024-1934,1936-65535; ENTER=cancel): '
+                if (-not $inputPorts.Trim()) { return }
+                $value=ConvertTo-ZapretPortRange $inputPorts
+            }
         }
         5 { $name='ipset_filter.mode';$value=if ($modes.IPSet -eq 'loaded') {'none'} else {'loaded'} }
         7 {
-            Write-Host "Select Discord Voice mode:`n  0. Off        - protect Discord/STUN from the Game UDP fallback`n  1. Standard   - official discovery fake profile`n  2. Compatible - preserved confirmed voice sequence"
+            Write-Host "Select Discord Voice mode:`n  0. Off        - protect Discord/STUN from the Game UDP fallback`n  1. Standard   - official discovery fake profile`n  2. Compatible - voice sequence of the selected preset"
             $pick=Read-ZapretMenuLine 'Selection (0-2): '
             if ($pick -notmatch '^[0-2]$') { throw 'Invalid selection.' }
             $name='voice_filter.mode';$value=@('off','standard','compatible')[[int]$pick]
         }
         8 {
-            Write-Host "Select an immutable UDP fake profile:`n`n  Discord Voice (current: $($modes.DiscordFake))`n     1. current`n     2. steam`n     3. google`n`n  Game Filter UDP (current: $($modes.GameFake))`n     4. current`n     5. dbank-v2`n     6. steam`n`n     7. Reset both to current`n     0. Cancel"
-            $pick=Read-ZapretMenuLine 'Selection (0-7): '
+            Write-Host "Select an immutable UDP fake profile:`n`n  Discord Voice (current: $($modes.DiscordFakeLabel))`n     1. current`n     2. steam`n     3. google`n`n  Game Filter UDP (current: $($modes.GameFakeLabel))`n     4. current`n     5. dbank-v2`n     6. steam`n`n     7. Reset both to current`n     0. Cancel"
+            $choices=@(Get-ZapretFakeChoices $root)
+            foreach ($kind in @('Discord','Game')) {
+                $activeSelection=if ($kind -eq 'Discord') {$modes.DiscordFake} else {$modes.GameFake}
+                try { $active=(Get-FileHash -LiteralPath (Get-ZapretFakePath $root $activeSelection $kind) -Algorithm SHA256).Hash; Write-Host ("  Current $kind SHA256: "+$active.Substring(0,12)) }
+                catch { Write-Host ("  Current $kind fake is missing or changed; select it again.") -ForegroundColor Yellow }
+            }
+            Write-Host 'Additional files: Discord / Game number, name, SHA256 prefix'
+            for ($i=0;$i -lt $choices.Count;$i++) {
+                Write-Host ('  {0}/{1}. {2}  [{3}]' -f (8+2*$i),(9+2*$i),$choices[$i].Name,$choices[$i].Hash.Substring(0,12))
+            }
+            $pick=Read-ZapretMenuLine 'Selection (0=cancel): '
             if ($pick -eq '0') { return }
-            if ($pick -notmatch '^[1-7]$') { throw 'Invalid selection.' }
-            $name=if ([int]$pick -le 3) {'discord_fake.mode'} elseif ($pick -eq '7') {'fake-defaults'} else {'game_fake.mode'}
-            $value=@('current','steam','google','current','dbank-v2','steam','current')[[int]$pick-1]
+            $number=0
+            if ($pick -notmatch '^\d+$' -or -not [int]::TryParse($pick,[ref]$number) -or $number -lt 1 -or $number -gt (7+2*$choices.Count)) { throw 'Invalid selection.' }
+            if ($number -le 7) {
+                $name=if ($number -le 3) {'discord_fake.mode'} elseif ($number -eq 7) {'fake-defaults'} else {'game_fake.mode'}
+                $value=@('current','steam','google','current','dbank-v2','steam','current')[$number-1]
+            } else {
+                $name=if (($number-8)%2 -eq 0) {'discord_fake.mode'} else {'game_fake.mode'}
+                $choice=$choices[[int][Math]::Floor(($number-8)/2)]
+                $gate=Enter-ZapretBundleOperation $root
+                try { $value=Import-ZapretFake $root $choice } finally { Exit-ZapretBundleOperation $gate }
+            }
         }
     }
     Invoke-ZapretMenuOperation update SetSetting { Set-ReleaseMenuSetting $root $name $value }
     $notice=switch ($Selection) {
         4 {
-            $label=@{off='Off';all='TCP and UDP';tcp='TCP only';udp='UDP only'}[$value]
-            "Game Filter saved: $label."
+            if ($name -like '*.ports') { "Game ports saved: $value." }
+            else { $label=@{off='Off';all='TCP and UDP';tcp='TCP only';udp='UDP only'}[$value]; "Game Filter saved: $label." }
         }
         5 {
             if ($value -eq 'loaded') { 'IPSet Filter saved: Enabled (loaded IP list).' }
@@ -263,10 +294,9 @@ function Show-ZapretQuickCheck {
     else { Write-Host 'TCP timestamps: not reported as enabled' -ForegroundColor Yellow }
     $proxy=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -ErrorAction SilentlyContinue
     if ($proxy -and $proxy.ProxyEnable) { Write-Host 'System proxy is enabled' -ForegroundColor Yellow }
-    foreach ($name in @('KillerNetworkService','SmartByteNetworkService','TracSrvWrapper')) {
-        $conflict=Get-Service $name -ErrorAction Ignore
-        try { if ($conflict) { Write-Host ('Potential conflicting service: '+$name) -ForegroundColor Yellow } }
-        finally { if ($conflict) { $conflict.Dispose() } }
+    . (Join-Path $PSScriptRoot 'environment-diagnostics.ps1')
+    foreach ($finding in @(Get-ZapretEnvironmentDiagnostics $root)) {
+        Write-Host ("[{0}] {1} {2}" -f $finding.Severity,$finding.Message,$finding.Action) -ForegroundColor $(if ($finding.Severity -eq 'Warning') {'Yellow'} else {'Gray'})
     }
     $service=Get-ZapretMenuService; $modes=Get-ZapretMenuModes
     Write-Host "Service: $($service.State), strategy: $($service.Preset), game: $($modes.Game), ipset: $($modes.IPSet), voice: $($modes.Voice)"

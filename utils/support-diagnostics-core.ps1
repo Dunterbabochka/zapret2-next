@@ -121,6 +121,15 @@ function ConvertTo-SupportFinding([object]$Finding) {
         ZapretService=@('Состояние службы Zapret', '')
         ZapretProcess=@('Ручной процесс Zapret', 'Закройте ручной запуск Zapret перед проверкой.')
         Environment=@('Проверка окружения', 'Устраните препятствие и повторите проверку.')
+        EnvironmentAdGuard=@('Обнаружен сетевой фильтр AdGuard', 'На время проверки отключите сетевую фильтрацию AdGuard.')
+        EnvironmentKiller=@('Обнаружены сетевые службы Killer', 'На время проверки отключите оптимизацию трафика Killer.')
+        EnvironmentIntelConnectivity=@('Обнаружена Intel Connectivity Network Service', 'На время проверки отключите оптимизацию трафика Intel Connectivity.')
+        EnvironmentCheckPoint=@('Обнаружены службы Check Point', 'Проверьте влияние сетевой фильтрации Check Point на подключение.')
+        EnvironmentSmartByte=@('Обнаружены службы SmartByte', 'На время проверки отключите оптимизацию трафика SmartByte.')
+        EnvironmentYouTubeHosts=@('В hosts есть записи для YouTube', 'Проверьте, не устарели ли адреса YouTube в системном hosts.')
+        EnvironmentSecureDNS=@('Системный защищённый DNS не обнаружен', 'Проверьте защищённый DNS в браузере или Windows, если есть ошибки разрешения имён.')
+        EnvironmentOneDrivePath=@('Сборка размещена в OneDrive', 'При блокировке файлов синхронизацией перенесите сборку в локальную папку.')
+        EnvironmentUnicodePath=@('Путь содержит кириллицу', 'Если сторонний компонент не запускается, проверьте короткий локальный путь.')
     }
     if (-not $descriptions.ContainsKey($code)) { $code = 'Environment' }
     $severity = if ($Finding.Severity -in @('Pass','Info','Warning','Blocker')) { $Finding.Severity } else { 'Warning' }

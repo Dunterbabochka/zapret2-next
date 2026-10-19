@@ -104,7 +104,7 @@ Assert-Startup ((Get-ZapretMenuModes).DiscordFake -eq 'current' -and (Get-Zapret
 $count=$script:refreshes.Count
 $script:answers.Enqueue('0');Set-ZapretMenuMode 8
 Assert-Startup ($script:refreshes.Count -eq $count) 'Cancel applied a setting'
-$script:answers.Enqueue('11');$script:answers.Enqueue('Y');Install-ZapretMenuService
+$script:answers.Enqueue([string]($classicPresets.Count+2));$script:answers.Enqueue('Y');Install-ZapretMenuService
 Assert-Startup ($script:refreshes[$script:refreshes.Count-1].Preset -eq 'NEXT BALANCED' -and $script:refreshes[$script:refreshes.Count-1].Install) 'Preset mapping or install confirmation changed'
 
 # Discover local templates without changing the shipped contract or selecting
@@ -114,20 +114,20 @@ $customPaths=@($customNames | ForEach-Object { Join-Path $fixture ('presets\'+$_
 $invalidPath=Join-Path $fixture 'presets\invalid.name.txt.in'
 try {
     foreach ($path in @($customPaths + $invalidPath)) { [IO.File]::WriteAllText($path,'# discovery fixture; never launched') }
-    Assert-Startup ($publicPresets.Count -eq 11) 'Local presets changed the wizard/release contract'
+    Assert-Startup ($publicPresets.Count -eq 24) 'Local presets changed the wizard/release contract'
     $menuPresets=@(Get-ZapretMenuPresets)
-    Assert-Startup ((($menuPresets | Select-Object -First 11) -join ',') -ceq ($publicPresets -join ',')) 'Shipped preset numbering changed'
+    Assert-Startup ((($menuPresets | Select-Object -First $publicPresets.Count) -join ',') -ceq ($publicPresets -join ',')) 'Shipped preset numbering changed'
     Assert-Startup (@(Get-ZapretCustomPresets).Count -eq 90) 'Local discovery included a template, hidden strategy or unsupported name'
     $script:answers.Enqueue('0')
     $menuLines=@(Install-ZapretMenuService 6>&1 | ForEach-Object { [string]$_ })
-    Assert-Startup ([bool]($menuLines -match '23\. LOCAL 012') -and [bool]($menuLines -match '101\. LOCAL 090')) 'Long custom column was truncated or misnumbered'
-    foreach ($case in @(@{Pick='12';Name='LOCAL 001'},@{Pick='23';Name='LOCAL 012'},@{Pick='101';Name='LOCAL 090'})) {
+    Assert-Startup ([bool]($menuLines -match '36\. LOCAL 012') -and [bool]($menuLines -match '114\. LOCAL 090')) 'Long custom column was truncated or misnumbered'
+    foreach ($case in @(@{Pick='25';Name='LOCAL 001'},@{Pick='36';Name='LOCAL 012'},@{Pick='114';Name='LOCAL 090'})) {
         $script:answers.Enqueue($case.Pick);$script:answers.Enqueue('Y')
         Install-ZapretMenuService 6>&1 | Out-Null
         Assert-Startup ($script:refreshes[$script:refreshes.Count-1].Preset -ceq $case.Name) 'Displayed custom number selected a different preset'
     }
     $count=$script:refreshes.Count
-    foreach ($pick in @('102','2147483648','not-a-number')) {
+    foreach ($pick in @('115','2147483648','not-a-number')) {
         $script:answers.Enqueue($pick)
         $rejected=$false
         try { Install-ZapretMenuService 6>&1 | Out-Null } catch { $rejected=$_.Exception.Message -eq 'Invalid preset selection.' }
@@ -137,7 +137,7 @@ try {
     $backup=$missing+'.missing-test'
     Move-Item -LiteralPath $missing -Destination $backup
     try {
-        Assert-Startup (@(Get-ZapretMenuPresets)[2] -ceq 'ALT3') 'Missing shipped file shifted the menu catalogue'
+        Assert-Startup (@(Get-ZapretMenuPresets)[3] -ceq 'ALT3') 'Missing shipped file shifted the menu catalogue'
         $rejected=$false
         try { Install-ZapretMenuService 6>&1 | Out-Null } catch { $rejected=$_.Exception.Message -eq 'Missing preset: ALT3' }
         Assert-Startup ($rejected -and $script:refreshes.Count -eq $count) 'Missing shipped template allowed an incorrect selection'

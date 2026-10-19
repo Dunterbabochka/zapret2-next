@@ -1,4 +1,5 @@
 ﻿# Windows boundaries are deliberately separate from the file transaction.
+. (Join-Path $PSScriptRoot 'config-settings.ps1')
 function Get-ReleaseConfigOptions([string]$Path) {
     $text = [IO.File]::ReadAllText($Path)
     $options = @{}
@@ -11,8 +12,14 @@ function Get-ReleaseConfigOptions([string]$Path) {
     if ($options.Preset -match '^CUSTOM (SAFE|BALANCED)$') { $options.Preset = 'NEXT ' + $matches[1] }
     if ($options.Preset -notmatch '^[A-Za-z0-9 _-]+$' -or $options.GameMode -notin @('off','tcp','udp','all') -or
         $options.IPSetMode -notin @('loaded','none') -or $options.VoiceMode -notin @('off','standard','compatible') -or
-        $options.DiscordFake -notin @('current','steam','google') -or $options.GameFake -notin @('current','dbank-v2','steam')) {
+        -not (Test-ZapretFakeSelection $options.DiscordFake Discord) -or -not (Test-ZapretFakeSelection $options.GameFake Game)) {
         throw 'The active configuration uses settings that cannot be migrated.'
+    }
+    foreach ($field in @('GameTcpPorts','GameUdpPorts')) {
+        $label = if ($field -eq 'GameTcpPorts') { 'Game TCP ports' } else { 'Game UDP ports' }
+        $found = [regex]::Matches($text, ('(?m)^# ' + $label + ': ([^\r\n]+)\r?$'))
+        if ($found.Count -gt 1) { throw 'Duplicate game port metadata.' }
+        $options[$field] = if ($found.Count) { ConvertTo-ZapretPortRange $found[0].Groups[1].Value } else { '1024-65535' }
     }
     return $options
 }
@@ -140,7 +147,7 @@ function Assert-ReleaseAppliedConfig([string]$Root, $Config, [string]$Output) {
 }
 function Get-ReleaseSettings([string]$Root) {
     $settings = @()
-    $defaults=@{'game_filter.mode'='off';'ipset_filter.mode'='loaded';'voice_filter.mode'='compatible';'discord_fake.mode'='current';'game_fake.mode'='current'}
+    $defaults=@{'game_filter.mode'='off';'game_tcp.ports'='1024-65535';'game_udp.ports'='1024-65535';'ipset_filter.mode'='loaded';'voice_filter.mode'='compatible';'discord_fake.mode'='current';'game_fake.mode'='current'}
     foreach ($name in $script:releaseModeNames) {
         $path = Join-Path $Root ('utils\' + $name)
         $settings += [pscustomobject]@{Name=$name;Bytes=$(if ([IO.File]::Exists($path)) {[Convert]::ToBase64String([IO.File]::ReadAllBytes($path))} else {$null});Default=$defaults[$name]}
@@ -154,7 +161,13 @@ function Copy-ReleaseSettings($Settings, [string]$Stage) {
         $path = Join-Path $Stage ('utils\' + $entry.Name)
         if ($null -ne $entry.Bytes) {
             $bytes = [Convert]::FromBase64String($entry.Bytes)
-            if ($entry.Name -ne 'check_updates.enabled' -and ([Text.Encoding]::UTF8.GetString($bytes)).Trim() -notin $allowed[$entry.Name]) { throw 'A saved mode file is invalid.' }
+            $value = ([Text.Encoding]::UTF8.GetString($bytes)).Trim()
+            if ($entry.Name -in @('game_tcp.ports','game_udp.ports')) { $null = ConvertTo-ZapretPortRange $value }
+            elseif ($entry.Name -in @('discord_fake.mode','game_fake.mode')) {
+                $kind = if ($entry.Name -eq 'discord_fake.mode') { 'Discord' } else { 'Game' }
+                if (-not (Test-ZapretFakeSelection $value $kind)) { throw 'A saved fake profile is invalid.' }
+            }
+            elseif ($entry.Name -ne 'check_updates.enabled' -and $value -notin $allowed[$entry.Name]) { throw 'A saved mode file is invalid.' }
             [IO.File]::WriteAllBytes($path, $bytes)
         } elseif ($entry.Name -eq 'check_updates.enabled') {
             if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) }
@@ -257,7 +270,7 @@ function Invoke-ReleasePrepare([string]$Root) {
         }
         $worker = Join-Path $directory 'recovery'
         New-Item -ItemType Directory -Path $worker -Force | Out-Null
-        foreach ($file in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1','session-log.ps1','manage-logs.ps1','service-control.ps1','ipset-utils.ps1','telegram-control.ps1','release-info.ps1','menu-input.ps1','menu-settings.ps1')) {
+        foreach ($file in @('update-release.ps1','update-release-core.ps1','update-release-state.ps1','bundle-operation.ps1','session-log.ps1','manage-logs.ps1','service-control.ps1','ipset-utils.ps1','telegram-control.ps1','release-info.ps1','menu-input.ps1','menu-settings.ps1','config-settings.ps1')) {
             Copy-Item -LiteralPath (Join-Path $Root ('utils\' + $file)) -Destination $worker -Force
         }
         $transaction = [pscustomobject]@{Schema=1;Root=$Root;Session=$sessionName;Status='prepared';Offer=$check.Offer

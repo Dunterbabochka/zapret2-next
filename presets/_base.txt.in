@@ -1,6 +1,8 @@
 # Zapret 2 NEXT generated configuration
 # Preset: {{PRESET}}
 # Game filter: {{GAME_MODE}}
+# Game TCP ports: {{GAME_TCP_PORTS}}
+# Game UDP ports: {{GAME_UDP_PORTS}}
 # IPSet filter: {{IPSET_MODE}}
 # Discord Voice: {{VOICE_MODE}}
 # Discord UDP fake: {{DISCORD_FAKE}}
@@ -27,8 +29,8 @@
 --blob=tls_max:@fake/tls_clienthello_max_ru.bin
 --blob=quic_google:@fake/quic_initial_www_google_com.bin
 --blob=stun:@fake/stun.bin
---blob=discord_voice:@fake/{{DISCORD_FAKE_FILE}}
---blob=game_udp:@fake/{{GAME_FAKE_FILE}}
+--blob=discord_voice:@"{{DISCORD_FAKE_PATH}}"
+--blob=game_udp:@"{{GAME_FAKE_PATH}}"
 --blob=http_iana:@fake/http_iana_org.bin
 --blob=zero:@fake/zero_512.bin
 {{PRESET_INIT}}

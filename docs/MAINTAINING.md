@@ -109,3 +109,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\validate-support.ps1
 `utils/validate-startup.ps1` проверяет меню настроек, отмену/подтверждение, paired dry-run, потоковую проверку IPSet, контексты журнала, локальный cache и native helper в disposable-копии. Реальные службы и задачи Telegram не изменяются. Набор запускается в Validate и Release под Windows PowerShell 5.1.
 
 `packaging/benchmark-startup.py` измеряет реальный ввод и возвраты через скрытую консоль; `packaging/benchmark-telegram-layout.py` сравнивает экспериментальные сборки без изменения поставляемого runtime. Методику и границы проверки см. в [PERFORMANCE.md](PERFORMANCE.md). Сравнения скорости выполнять последовательно, отдельно от сборки и тяжёлых validation-наборов.
+
+## Проверки Classic и новых настроек
+
+`utils/validate-enhancements.ps1` проверяет диапазоны портов, перенос применённых настроек, пользовательские фейки и все доменные исключения. `python -m unittest discover -s packaging -p test_network_checks.py` проверяет реальную передачу на loopback-сервере, включая зависание после успешного HEAD. `packaging/smoke-presets.py` проверяет все 24 публичных пресета; `--arguments-only` отключает инициализацию Lua и перехват. Проверка Lua с `--intercept=0` требует повышенной Windows-сессии.

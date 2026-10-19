@@ -55,7 +55,7 @@ $topFiles = @(
 )
 $dirs = @('bin','lua','lists','presets','utils','strategies','.service')
 foreach ($file in $topFiles) { Copy-Item (Join-Path $root $file) $stage -Force }
-$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md', 'ADVANCED.md', 'MAINTAINING.md', 'SUPPORT.md', 'UPDATING.md', 'PERFORMANCE.md')
+$publicDocs = @('MANUAL_TEST.md', 'STABILITY.md', 'COMPATIBILITY.md', 'CUSTOM-PARAMETERS.md', 'TELEGRAM.md', 'ADVANCED.md', 'MAINTAINING.md', 'SUPPORT.md', 'UPDATING.md', 'PERFORMANCE.md', 'CLASSIC.md')
 New-Item -ItemType Directory -Path (Join-Path $stage 'docs') -Force | Out-Null
 foreach ($document in $publicDocs) {
     Copy-Item -LiteralPath (Join-Path $root ('docs\' + $document)) -Destination (Join-Path $stage 'docs') -Force
@@ -63,6 +63,7 @@ foreach ($document in $publicDocs) {
 foreach ($dir in $dirs) {
     $sourceDir = Join-Path $root $dir
     foreach ($file in Get-ChildItem -LiteralPath $sourceDir -Recurse -File -Force) {
+        if ($dir -eq 'lists' -and $file.FullName.StartsWith((Join-Path $sourceDir 'fakes') + '\', [StringComparison]::OrdinalIgnoreCase)) { continue }
         if ($dir -eq 'strategies' -and $file.Name -notin $strategyLaunchers) { continue }
         if ($file.Name -match '\.(?:backup|bak|tmp|old|orig|swp|download|lock|log)$' -or
             $file.Name -in @('list-general-user.txt','list-exclude-user.txt','ipset-exclude-user.txt')) { continue }
@@ -118,6 +119,7 @@ foreach ($sourceOnlyPath in @(
     'utils\validate-release-update.ps1',
     'utils\validate-session-log.ps1',
     'utils\validate-startup.ps1',
+    'utils\validate-enhancements.ps1',
     'lists\ipset-all.txt.backup'
 )) {
     Remove-Item (Join-Path $stage $sourceOnlyPath) -Force -ErrorAction SilentlyContinue
@@ -130,6 +132,8 @@ $releaseModes = @{
     'voice_filter.mode' = 'compatible'
     'discord_fake.mode' = 'current'
     'game_fake.mode' = 'current'
+    'game_tcp.ports' = '1024-65535'
+    'game_udp.ports' = '1024-65535'
 }
 foreach ($entry in $releaseModes.GetEnumerator()) {
     [IO.File]::WriteAllText((Join-Path $stage ('utils\' + $entry.Key)), $entry.Value + "`r`n", [Text.Encoding]::ASCII)
@@ -141,7 +145,7 @@ foreach ($updater in @('update-release.ps1','update-release-core.ps1','update-re
     if (-not (Test-Path -LiteralPath (Join-Path $stage ('utils\'+$updater)) -PathType Leaf)) { throw "Missing release update component: $updater" }
 }
 foreach ($experimentalPreset in @(
-    'VOICE.txt.in', 'FAKE TLS AUTO.txt.in', 'SIMPLE FAKE.txt.in',
+    'VOICE.txt.in',
     'NEXT AGGRESSIVE.txt.in'
 )) {
     Remove-Item (Join-Path $stage "presets\$experimentalPreset") -Force -ErrorAction SilentlyContinue

@@ -313,7 +313,9 @@ function Get-ReleaseHttpTarget([string]$Url) {
     helper.write_text(f'@echo off\npowershell -NoProfile -ExecutionPolicy Bypass -File "{script_path}" -Action ReadMenuChoice\nexit /b %errorlevel%\n', encoding="ascii")
     for choice in ("0", "10", "111", "999"):
         result = subprocess.run(["cmd.exe", "/d", "/c", str(helper)], input=choice + "\n", text=True, capture_output=True, timeout=10)
-        assert result.returncode == (255 if choice == "999" else 100 + int(choice)), result.stderr
+        assert result.returncode == (255 if choice == "999" else 100 + int(choice)), (
+            f"Redirected menu input {choice!r}: exit={result.returncode}, "
+            f"stdout={result.stdout!r}, stderr={result.stderr!r}")
     export_command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(fixture / "utils" / "manage-logs.ps1"), "-Action", "Export", "-NoReveal"]
     exported = subprocess.run(export_command, stdin=subprocess.DEVNULL, text=True, capture_output=True, timeout=15)
     assert exported.returncode == 0, exported.stderr

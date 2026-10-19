@@ -18,3 +18,5 @@ ytimg.com
 ytimg.l.google.com
 play.google.com
 google.ru
+fonts.googleapis.com
+www.gstatic.com

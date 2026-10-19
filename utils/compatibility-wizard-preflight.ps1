@@ -80,6 +80,10 @@ function Get-ZapretConflictState {
 function Get-PreflightSnapshot {
     param([switch]$SkipVoiceChecks)
     $findings = [Collections.Generic.List[object]]::new()
+    . (Join-Path $PSScriptRoot 'environment-diagnostics.ps1')
+    foreach ($finding in @(Get-ZapretEnvironmentDiagnostics $root)) {
+        [void]$findings.Add((New-PreflightFinding ('Environment'+$finding.Code) $finding.Severity 'Environment' $finding.Message $finding.Action))
+    }
 
     if (Test-IsAdministrator) {
         [void]$findings.Add((New-PreflightFinding 'Administrator' 'Pass' 'Runtime' 'Administrator rights are available.'))

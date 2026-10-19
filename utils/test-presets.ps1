@@ -6,6 +6,9 @@
     [int]$TimeoutSeconds = 5,
     [ValidateRange(1, 32)]
     [int]$MaxParallel = 8,
+    [ValidateRange(16384, 1048576)]
+    [int]$DpiBytes = 65536,
+    [string]$DpiHost,
     [switch]$NonInteractive
 )
 
@@ -55,9 +58,8 @@ if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
 }
 Write-Host '[OK] curl.exe' -ForegroundColor Green
 
-$presetFiles = Get-ChildItem (Join-Path $root 'presets') -Filter '*.txt.in' |
-    Where-Object { $_.BaseName -notlike '_*' } |
-    Sort-Object { [regex]::Replace($_.Name, '(\d+)', { $args[0].Value.PadLeft(8, '0') }) }
+. (Join-Path $PSScriptRoot 'preset-catalog.ps1')
+$presetFiles = @(Get-ZapretMenuPresets | ForEach-Object { Get-Item -LiteralPath (Join-Path $root ('presets\'+$_+'.txt.in')) })
 if ($Preset) {
     $wanted = @($Preset | ForEach-Object { $_.ToLowerInvariant() })
     $presetFiles = @($presetFiles | Where-Object { $wanted -contains (($_.BaseName -replace '\.txt$', '').ToLowerInvariant()) })
@@ -79,63 +81,9 @@ function Invoke-WebChecks {
     $pool = [RunspaceFactory]::CreateRunspacePool(1, $Parallel)
     $pool.Open()
     $worker = {
-        param($Target, $TimeoutSeconds)
-
-        $checks = @()
-        if ($Target.Url) {
-            $tests = @(
-                @{ Name='HTTP1.1'; Args=@('--http1.1') },
-                @{ Name='TLS1.2'; Args=@('--tlsv1.2','--tls-max','1.2') },
-                @{ Name='TLS1.3'; Args=@('--tlsv1.3','--tls-max','1.3') }
-            )
-            foreach ($test in $tests) {
-                $previousErrorAction = $ErrorActionPreference
-                try {
-                    $ErrorActionPreference = 'Continue'
-                    $output = & curl.exe -I -sS --max-time $TimeoutSeconds -o NUL -w '%{http_code}' @($test.Args) $Target.Url 2>$null
-                    $curlExitCode = $LASTEXITCODE
-                } finally {
-                    $ErrorActionPreference = $previousErrorAction
-                }
-                $code = ($output | Out-String).Trim()
-                $ok = $curlExitCode -eq 0 -and $code -match '^\d{3}$' -and $code -ne '000'
-                $checks += [pscustomobject]@{
-                    Name = $test.Name
-                    Status = if ($ok) { 'OK' } else { 'FAIL' }
-                    Success = $ok
-                    Detail = if ($ok) { $code } else { "curl $curlExitCode / HTTP $(if ($code) { $code } else { 'none' })" }
-                }
-            }
-        }
-
-        $pingStatus = 'n/a'
-        $pingSuccess = $null
-        if ($Target.PingTarget) {
-            $pingClient = [Net.NetworkInformation.Ping]::new()
-            try {
-                $reply = $pingClient.Send($Target.PingTarget, [Math]::Max(1000, $TimeoutSeconds * 1000))
-                if ($reply.Status -eq [Net.NetworkInformation.IPStatus]::Success) {
-                    $pingStatus = "$($reply.RoundtripTime)ms"
-                    $pingSuccess = $true
-                } else {
-                    $pingStatus = $reply.Status.ToString()
-                    $pingSuccess = $false
-                }
-            } catch { Write-ZapretLogException $_ -Warning;
-                $pingStatus = 'Timeout'
-                $pingSuccess = $false
-            } finally {
-                $pingClient.Dispose()
-            }
-        }
-
-        [pscustomobject]@{
-            Name = $Target.Name
-            Url = $Target.Url
-            Checks = $checks
-            PingStatus = $pingStatus
-            PingSuccess = $pingSuccess
-        }
+        param($Target, $TimeoutSeconds, $Helper, $RangeBytes)
+        . $Helper
+        Invoke-ZapretEndpointCheck $Target $TimeoutSeconds $RangeBytes
     }
 
     $jobs = @()
@@ -143,6 +91,8 @@ function Invoke-WebChecks {
         $powershell = [PowerShell]::Create().AddScript($worker)
         [void]$powershell.AddArgument($target)
         [void]$powershell.AddArgument($Timeout)
+        [void]$powershell.AddArgument((Join-Path $PSScriptRoot 'network-checks.ps1'))
+        [void]$powershell.AddArgument($DpiBytes)
         $powershell.RunspacePool = $pool
         $jobs += [pscustomobject]@{
             PowerShell = $powershell
@@ -179,13 +129,17 @@ function Invoke-WebChecks {
     foreach ($result in $results) {
         Write-Host ('  ' + $result.Name.PadRight($maxNameLength) + '  ') -NoNewline
         foreach ($check in $result.Checks) {
-            $color = if ($check.Success) { 'Green' } else { 'Red' }
+            $color = if ($check.Status -in @('UNSUPPORTED','LIKELY_BLOCKED')) { 'Yellow' } elseif ($check.Success) { 'Green' } else { 'Red' }
             Write-Host ("{0}: " -f $check.Name) -NoNewline -ForegroundColor DarkGray
             Write-Host $check.Status.PadRight(5) -NoNewline -ForegroundColor $color
             $rows += [pscustomobject]@{
                 Target = $result.Name
                 Test = $check.Name
-                Success = [bool]$check.Success
+                Success = $check.Success
+                Status = $check.Status
+                UploadedBytes = $check.UploadedBytes
+                DownloadedBytes = $check.DownloadedBytes
+                DurationMs = $check.DurationMs
                 Detail = $check.Detail
             }
         }
@@ -195,6 +149,10 @@ function Invoke-WebChecks {
             $rows += [pscustomobject]@{
                 Target = $result.Name
                 Test = 'PING'
+                Status = if ($result.PingSuccess) { 'OK' } else { 'FAIL' }
+                UploadedBytes = 0
+                DownloadedBytes = 0
+                DurationMs = 0
                 Success = [bool]$result.PingSuccess
                 Detail = $result.PingStatus
             }
@@ -223,11 +181,16 @@ function Get-StandardTargets {
 }
 
 function Get-DpiTargets {
+    if ($DpiHost) {
+        $uri=$null
+        if (-not [Uri]::TryCreate($DpiHost,[UriKind]::Absolute,[ref]$uri) -or $uri.Scheme -notin @('http','https') -or $uri.UserInfo) { throw 'DpiHost must be an HTTP(S) URL without credentials.' }
+        return @([pscustomobject]@{Name='DPI_CUSTOM';Url=$uri.AbsoluteUri;PingTarget=$null;Category='dpi'})
+    }
     try {
         $suiteUrl = 'https://hyperion-cs.github.io/dpi-checkers/ru/tcp-16-20/suite.v2.json'
         $suiteData = Invoke-RestMethod -Uri $suiteUrl -TimeoutSec $TimeoutSeconds
         $index = 0
-        return @($suiteData | Select-Object -First 20 | ForEach-Object {
+        return @($suiteData | ForEach-Object {
             $index++
             $id = if ($_.id) { $_.id } else { $index }
             [pscustomobject]@{
@@ -339,27 +302,27 @@ try {
         Write-Host '------------------------------------------------------------' -ForegroundColor DarkCyan
         Stop-Winws2
 
-        & $renderer -Preset $name -Output $config | Out-Null
-        & $renderer -Preset $name -Output $dryConfig -DryRun | Out-Null
+        & $renderer -Preset $name -Output $config -IPSetMode $(if ($Suite -in @('dpi','both')) {'any'} else {'loaded'}) | Out-Null
+        & $renderer -Preset $name -Output $dryConfig -DryRun -IPSetMode $(if ($Suite -in @('dpi','both')) {'any'} else {'loaded'}) | Out-Null
         Write-Host '  > Validating configuration...' -ForegroundColor DarkGray
         & $starter -Config $dryConfig -LogPrefix ($logPrefix + '-validate') -Validate
         if ($LASTEXITCODE -ne 0) {
             Write-Host '  [X] Configuration validation failed.' -ForegroundColor Red
-            $all += [pscustomobject]@{ Preset=$name; Target='(process)'; Test='VALIDATE'; Success=$false; Detail="winws2 rejected config; see $logPrefix-validate.*.log" }
+            $all += [pscustomobject]@{ Preset=$name; Target='(process)'; Test='VALIDATE'; Status='FAIL'; Success=$false; Detail="winws2 rejected config; see $logPrefix-validate.*.log"; UploadedBytes=0; DownloadedBytes=0; DurationMs=0 }
             continue
         }
         Write-Host '  > Starting winws2...' -ForegroundColor DarkGray
         & $starter -Config $config -LogPrefix $logPrefix -StartupWaitSeconds 3
         if ($LASTEXITCODE -ne 0) {
             Write-Host '  [X] winws2 failed to start.' -ForegroundColor Red
-            $all += [pscustomobject]@{ Preset=$name; Target='(process)'; Test='START'; Success=$false; Detail="startup failed; see $logPrefix.*.log" }
+            $all += [pscustomobject]@{ Preset=$name; Target='(process)'; Test='START'; Status='FAIL'; Success=$false; Detail="startup failed; see $logPrefix.*.log"; UploadedBytes=0; DownloadedBytes=0; DurationMs=0 }
             Stop-Winws2
             continue
         }
         Write-Host ("  > Testing targets (parallel: {0})..." -f $MaxParallel) -ForegroundColor DarkGray
         $rows = Invoke-WebChecks -Targets $targets -Timeout $TimeoutSeconds -Parallel $MaxParallel
         foreach ($row in $rows) {
-            $all += [pscustomobject]@{ Preset=$name; Target=$row.Target; Test=$row.Test; Success=$row.Success; Detail=$row.Detail }
+            $all += [pscustomobject]@{ Preset=$name; Target=$row.Target; Test=$row.Test; Status=$row.Status; Success=$row.Success; Detail=$row.Detail; UploadedBytes=$row.UploadedBytes; DownloadedBytes=$row.DownloadedBytes; DurationMs=$row.DurationMs }
         }
         $passed = @($rows | Where-Object Success).Count
         $timer.Stop()
@@ -386,7 +349,7 @@ $all | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $csv
 
 $summary = $all | Group-Object Preset | ForEach-Object {
     $passed = @($_.Group | Where-Object Success).Count
-    [pscustomobject]@{ Preset=$_.Name; Passed=$passed; Failed=$_.Count-$passed; Total=$_.Count }
+    [pscustomobject]@{ Preset=$_.Name; Passed=$passed; Failed=@($_.Group | Where-Object { $_.Success -eq $false }).Count; Unsupported=@($_.Group | Where-Object { $_.Status -eq 'UNSUPPORTED' }).Count; Total=$_.Count }
 }
 
 Write-Host ''
@@ -395,10 +358,10 @@ Write-Host '                         RESULTS' -ForegroundColor Cyan
 Write-Host '============================================================' -ForegroundColor Cyan
 foreach ($item in $summary) {
     Write-Host ("  {0} : " -f $item.Preset) -NoNewline
-    Write-Host ("OK={0} FAIL={1} TOTAL={2}" -f $item.Passed, $item.Failed, $item.Total) -ForegroundColor $(if($item.Failed){'Yellow'}else{'Green'})
+    Write-Host ("OK={0} FAIL={1} TOTAL={2} UNSUP={3}" -f $item.Passed, $item.Failed, $item.Total, $item.Unsupported) -ForegroundColor $(if($item.Failed){'Yellow'}else{'Green'})
 }
 
-$best = $summary |
+$best = $summary | Where-Object { $_.Passed -gt 0 } |
     Sort-Object @{Expression='Passed'; Descending=$true}, @{Expression='Failed'; Ascending=$true} |
     Select-Object -First 1
 if ($best) {
@@ -407,7 +370,7 @@ if ($best) {
 }
 Write-Host ("  Results saved: {0}" -f $csv) -ForegroundColor Green
 
-$exitCode = if (@($all | Where-Object { -not $_.Success }).Count) { 2 } else { 0 }
+$exitCode = if (@($all | Where-Object { $_.Success -eq $false }).Count) { 2 } else { 0 }
 if (-not $NonInteractive) {
     Write-Host ''
     Write-Host 'Press any key to close...' -ForegroundColor Yellow
