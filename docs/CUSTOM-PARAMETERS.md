@@ -1,6 +1,6 @@
 # NEXT and additional Classic parameters
 
-The NEXT rows are the fixed parameter ledger for the first controlled iteration. Classic has been re-imported from the local 1.10.3 reference; see [CLASSIC.md](CLASSIC.md). The rendered config in each A/B result directory is the authoritative copy used by winws2.
+The NEXT rows are the fixed parameter ledger for the first controlled iteration. Classic has been re-imported from the local 1.10.3 reference; see the [strategy guide](ADVANCED.md#стратегии). The rendered config in each A/B result directory is the authoritative copy used by winws2.
 
 NEXT SAFE and NEXT BALANCED are public strategies, renamed from CUSTOM SAFE and CUSTOM BALANCED without changing their traffic actions. ALT12 is also public. NEXT AGGRESSIVE remains development-only and is excluded from the service menu, Compatibility Wizard and packaged presets. Old CUSTOM names remain renderer aliases.
 
@@ -14,6 +14,15 @@ NEXT SAFE and NEXT BALANCED are public strategies, renamed from CUSTOM SAFE and 
 Fooling and packet-range boundaries are the existing native Lua parameters shown above; none of these candidates uses a global all-port strategy. The next iteration must change one parameter group at a time and record the resulting A/B JSON/CSV and fresh voice report. Pin the rendered ALT12 config with each comparison; older A/B results refer to the earlier baseline.
 
 ## Fixed first-iteration scope and fooling ledger
+
+Classic translation preserves the source packet boundaries: cutoff `nN` becomes
+the exclusive range `<nN`, `badseq` becomes `tcp_seq`/`tcp_ack`, and `ts` becomes
+`tcp_ts`. Alternate host-split order is implemented by `next_hostfakesplit`;
+`multidisorder_legacy` preserves the original packet order. FAKE TLS AUTO keeps
+the cloned ClientHello (`!`). The upstream Lua libraries are not modified.
+The source overlap values include 568 for general, 652 for ALT2, 681 for ALT6
+and 679 for ALT7. These are static translation details; packet captures and
+provider-specific testing are required to establish network equivalence.
 
 - Every TCP fake in the NEXT candidates uses tcp_ts=-1000; current Classic ts fooling uses the source default -600000. Every multisplit uses tcp_ts_up; SAFE and BALANCED use the zero overlap pattern, while AGGRESSIVE uses the documented tls_max overlap pattern.
 - For NEXT, general HTTP, general TLS, Google/YouTube TLS, Discord media TLS and IPSet TCP profiles use out-range=-d10. QUIC and IPSet UDP use out-range=-d5. Optional game profiles remain disabled by the port-12 sentinel; when explicitly enabled in a separate game test, Game TCP uses out-range=-d4 and Game UDP uses out-range=-n4.

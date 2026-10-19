@@ -1,4 +1,4 @@
-# Classic reference: local Windows bundle 1.10.3; see docs/CLASSIC.md.
+# Classic reference: local Windows bundle 1.10.3.
 [PRESET_INIT]
 --lua-init=@../lua/zapret-next.lua
 [TCP_HTTP]

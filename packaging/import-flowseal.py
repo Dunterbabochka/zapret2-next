@@ -150,7 +150,7 @@ def main():
     for path in sorted(args.source.glob('general*.bat')):
         name = 'general' if path.stem == 'general' else path.stem[9:-1]
         source = path.read_text(encoding='utf-8-sig')
-        content = '# Classic reference: local Windows bundle 1.10.3; see docs/CLASSIC.md.\n' + translate(source)
+        content = '# Classic reference: local Windows bundle 1.10.3.\n' + translate(source)
         (ROOT / 'presets' / (name + '.txt.in')).write_text(content, encoding='utf-8')
         launcher = ROOT / 'strategies' / path.name
         launcher.write_bytes(('@echo off\r\ncall "%~dp0..\\utils\\run-preset.bat" "' + name + '"\r\n').encode())

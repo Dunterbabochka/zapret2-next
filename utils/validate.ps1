@@ -902,9 +902,10 @@ $sourceFiles = @(Get-ChildItem -LiteralPath $root -File -Force) + @(
 )
 $brandingPattern = 'Flowseal|zapret-discord-youtube|vpndiscordyooutube|bypassblock|zapretvpns'
 $telegramCreditPaths = @((Join-Path $root 'README.md'), (Join-Path $root 'docs\TELEGRAM.md'), (Join-Path $root 'docs\ADVANCED.md'))
+$ipsetCreditPaths = @((Join-Path $root 'utils\update-ipset.ps1'), (Join-Path $root 'docs\ADVANCED.md'), (Join-Path $root 'docs\MANUAL_TEST.md'))
 $forbidden = $sourceFiles |
     Where-Object {
-        $_.FullName -notmatch '[\\/](runtime|Results|dist)[\\/]' -and
+        $_.FullName.Substring($root.Length + 1) -notmatch '(^|[\\/])(runtime|Results|dist)[\\/]' -and
         $_.FullName -notmatch '[\\/]bin[\\/]telegram[\\/]licenses[\\/]' -and
         $_.FullName -notmatch '[\\/](THIRD_PARTY_NOTICES\.md|LICENSE\.txt|validate\.ps1|sync-upstream-ipset\.ps1)$' -and
         $_.Extension -in @('.md', '.bat', '.ps1', '.txt', '.in', '.yml', '.yaml')
@@ -912,7 +913,13 @@ $forbidden = $sourceFiles |
     Select-String -Pattern $brandingPattern -CaseSensitive:$false
 foreach ($hit in $forbidden) {
     $brandingLine = $hit.Line
-    if ($hit.Path -eq (Join-Path $root 'docs\CLASSIC.md')) { $brandingLine = $brandingLine -replace 'import-flowseal\.py', '' }
+    if ($hit.Path -in $ipsetCreditPaths) {
+        # Permit only the actual IPSet source, not arbitrary upstream branding.
+        $brandingLine = $brandingLine -replace '(?i)\[Flowseal/zapret-discord-youtube\]\(https://github\.com/Flowseal/zapret-discord-youtube\)', ''
+        $brandingLine = $brandingLine -replace '(?i)https://raw\.githubusercontent\.com/Flowseal/zapret-discord-youtube/main/\.service/ipset-service\.txt\b', ''
+        $brandingLine = $brandingLine -replace '(?i)https://github\.com/Flowseal/zapret-discord-youtube\b', ''
+        $brandingLine = $brandingLine -replace '(?i)`Flowseal/zapret-discord-youtube`', ''
+    }
     if ($hit.Path -in $telegramCreditPaths) {
         # Credit the bundled upstreams without allowing unrelated branding.
         if ($hit.Path -in @((Join-Path $root 'README.md'), (Join-Path $root 'docs\ADVANCED.md'))) {

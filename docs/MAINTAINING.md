@@ -67,7 +67,7 @@ Get-FileHash .\zapret2-next-vX.Y.Z.zip -Algorithm SHA256
 Из корня проекта:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.4.4
+powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.4.5
 powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\build-release.ps1 -Version 0.5.0-beta.1 -Beta
 ```
 
@@ -111,5 +111,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\validate-support.ps1
 `packaging/benchmark-startup.py` измеряет реальный ввод и возвраты через скрытую консоль; `packaging/benchmark-telegram-layout.py` сравнивает экспериментальные сборки без изменения поставляемого runtime. Методику и границы проверки см. в [PERFORMANCE.md](PERFORMANCE.md). Сравнения скорости выполнять последовательно, отдельно от сборки и тяжёлых validation-наборов.
 
 ## Проверки Classic и новых настроек
+
+Все 22 Classic адаптированы из локальной исходной сборки 1.10.3. Хеши исходных
+bat-файлов записаны в `packaging/classic-reference.json`, бинарных фейков —
+в `SHA256SUMS.txt`; сведения о происхождении и лицензиях — в
+`THIRD_PARTY_NOTICES.md`. Команда воспроизводимого импорта приведена в
+[расширенном руководстве](ADVANCED.md#classic-import).
 
 `utils/validate-enhancements.ps1` проверяет диапазоны портов, перенос применённых настроек, пользовательские фейки и все доменные исключения. `python -m unittest discover -s packaging -p test_network_checks.py` проверяет реальную передачу на loopback-сервере, включая зависание после успешного HEAD. `packaging/smoke-presets.py` проверяет все 24 публичных пресета; `--arguments-only` отключает инициализацию Lua и перехват. Проверка Lua с `--intercept=0` требует повышенной Windows-сессии.
