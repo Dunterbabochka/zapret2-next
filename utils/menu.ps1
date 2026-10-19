@@ -344,8 +344,7 @@ function Invoke-ZapretMenuAction([int]$Selection) {
         9 { Show-ZapretTelegramMenu }
         10 {
             Clear-ZapretMenu
-            $url=try { 'https://raw.githubusercontent.com/'+(Get-ReleaseRepository $root)+'/main/.service/ipset-service.txt' } catch {''}
-            Invoke-ZapretMenuChild update-ipset.ps1 @('-RemoteUrl',$url,'-Destination',(Join-Path $root 'lists\ipset-all.txt'))
+            Invoke-ZapretMenuChild update-ipset.ps1 @('-Destination',(Join-Path $root 'lists\ipset-all.txt'))
             Update-ZapretMenuService; Wait-ZapretMenu
         }
         11 {

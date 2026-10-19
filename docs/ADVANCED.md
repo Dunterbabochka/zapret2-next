@@ -233,6 +233,13 @@ Service Manager также умеет:
 - после отдельного подтверждения очищать `Cache`, `Code Cache` и `GPUCache` для
   Discord Stable, PTB, Canary и Development.
 
+Пункт **10. Update IPSet List** запускает `utils/update-ipset.ps1` и скачивает
+актуальный `.service/ipset-service.txt` напрямую из ветки `main` репозитория
+[Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube).
+Список сохраняется в `lists/ipset-all.txt`; предварительно обновлять репозиторий
+Zapret 2 NEXT не требуется. После обновления меню предлагает перезапустить
+установленную службу. При ручном запуске стратегии её нужно перезапустить вручную.
+
 Обновление IPSet проверяет IPv4/IPv6, длину CIDR и повторяющиеся записи. Пустой,
 повреждённый список, CIDR `/0` или сокращение списка более чем вдвое отклоняются.
 При обрыве загрузки используется встроенный снимок, который проходит те же проверки.
@@ -348,7 +355,9 @@ runtime\test-results
 | `docs/` | Дополнительная техническая документация |
 | `.github/` | GitHub Actions и шаблоны Issues |
 
-Maintainer-инструмент `utils/sync-upstream-ipset.ps1` сначала создаёт preview в
+Maintainer-инструмент `utils/sync-upstream-ipset.ps1` обновляет встроенный снимок
+Flowseal для будущих сборок; пункт 10 работает независимо от этого инструмента.
+Скрипт сначала создаёт preview в
 `runtime/ipset-sync`, включая `added.txt`, `removed.txt` и `SUMMARY.txt`. Файлы
 проекта меняются только при повторном явном запуске с `-Apply`; в пользовательский
 Release этот скрипт не включается.

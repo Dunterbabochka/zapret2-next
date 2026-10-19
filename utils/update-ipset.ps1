@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$RemoteUrl,
+    [string]$RemoteUrl = 'https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/.service/ipset-service.txt',
     [string]$Destination,
     [string]$SourcePath
 )
