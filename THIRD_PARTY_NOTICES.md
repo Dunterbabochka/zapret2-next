@@ -16,6 +16,15 @@ The opt-in UDP fake selector also includes two payloads copied from the local Fl
 
 ## Reused Windows bundle code
 
+On 2026-10-23, the 22 Classic references were refreshed from the verified
+Flowseal 1.10.4 tag (176f56dc3f11ce5915c26abcdde903f93d835b64). Fifteen presets
+change their fake references from Max to Sferum, retaining the source packet
+cutoffs, repeats and overlap sizes. The seven additional TLS/QUIC payloads,
+the bundled IPSet, lesta.pw exclusion and Happ detection derive from that
+MIT-licensed reference. Their hashes are recorded in SHA256SUMS.txt and
+the command-file provenance in packaging/classic-reference.json. The
+Zapret 2 engine and pinned upstream Lua libraries were not replaced.
+
 Copyright (c) 2016-2026 bol-van  
 Copyright (c) 2024-2026 Flowseal
 

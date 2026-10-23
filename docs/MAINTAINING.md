@@ -112,10 +112,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\validate-support.ps1
 
 ## Проверки Classic и новых настроек
 
-Все 22 Classic адаптированы из локальной исходной сборки 1.10.3. Хеши исходных
+Все 22 Classic синхронизированы с локальной исходной сборкой 1.10.4. Хеши исходных
 bat-файлов записаны в `packaging/classic-reference.json`, бинарных фейков —
 в `SHA256SUMS.txt`; сведения о происхождении и лицензиях — в
 `THIRD_PARTY_NOTICES.md`. Команда воспроизводимого импорта приведена в
 [расширенном руководстве](ADVANCED.md#classic-import).
+
+В обновлении 1.10.4 у 15 Classic заменены ссылки на фейки Max на Sferum;
+cutoff, повторы, позиции разбиения и размеры перекрытия сохранены. Семь новых
+TLS/QUIC-фейков доступны как дополнительные варианты без смены значений по
+умолчанию. Обновлены встроенный IPSet (33 048 записей), исключение `lesta.pw`
+и обнаружение Happ. Шаблоны NEXT и поведение Game/IPSet Filter не меняются.
 
 `utils/validate-enhancements.ps1` проверяет диапазоны портов, перенос применённых настроек, пользовательские фейки и все доменные исключения. `python -m unittest discover -s packaging -p test_network_checks.py` проверяет реальную передачу на loopback-сервере, включая зависание после успешного HEAD. `packaging/smoke-presets.py` проверяет все 24 публичных пресета; `--arguments-only` отключает инициализацию Lua и перехват. Проверка Lua с `--intercept=0` требует повышенной Windows-сессии.

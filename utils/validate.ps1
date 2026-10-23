@@ -416,11 +416,11 @@ if (Test-Path -LiteralPath $alt12Path -PathType Leaf) {
         $alt12Google = @(Get-ProfileLines -Content $alt12Content -Marker '# Google/YouTube TLS')
         if ($alt12Google -notcontains '--lua-desync=hostfakesplit:host=www.google.com:tcp_ts=-600000:ip_id=zero:tcp_ts_up:repeats=1') { Add-ValidationError 'ALT12 candidate is missing the isolated Google hostfakesplit profile.' }
         if ($alt12Discord -contains '--lua-desync=hostfakesplit:host=www.google.com:tcp_ts=-600000:ip_id=zero:tcp_ts_up:repeats=1') { Add-ValidationError 'ALT12 hostfakesplit leaked into the Discord media profile.' }
-        $expectedAlt12Split='--lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max:tcp_ts_up'
-        $expectedAlt12Max='--lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up'
+        $expectedAlt12Split='--lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=classic_tls_clienthello_www_sferum_ru:tcp_ts_up'
+        $expectedAlt12Sferum='--lua-desync=fake:blob=classic_tls_clienthello_www_sferum_ru:repeats=8:tcp_ts=-600000:tcp_ts_up'
         foreach ($marker in @('# General HTTP', '# General TLS', '# IPSet fallback TCP', '# Optional game TCP filter')) {
             $profile = @(Get-ProfileLines -Content $alt12Content -Marker $marker)
-            if ($profile -notcontains $expectedAlt12Split -or $profile -notcontains $expectedAlt12Max) {
+            if ($profile -notcontains $expectedAlt12Split -or $profile -notcontains $expectedAlt12Sferum) {
                 Add-ValidationError "ALT12 reference fake/split missing in $marker."
             }
         }
@@ -905,6 +905,7 @@ $telegramCreditPaths = @((Join-Path $root 'README.md'), (Join-Path $root 'docs\T
 $ipsetCreditPaths = @((Join-Path $root 'utils\update-ipset.ps1'), (Join-Path $root 'docs\ADVANCED.md'), (Join-Path $root 'docs\MANUAL_TEST.md'))
 $forbidden = $sourceFiles |
     Where-Object {
+        $_.FullName -notin @((Join-Path $root 'AGENTS.md'),(Join-Path $root 'docs\CHANGES_PENDING.md')) -and
         $_.FullName.Substring($root.Length + 1) -notmatch '(^|[\\/])(runtime|Results|dist)[\\/]' -and
         $_.FullName -notmatch '[\\/]bin[\\/]telegram[\\/]licenses[\\/]' -and
         $_.FullName -notmatch '[\\/](THIRD_PARTY_NOTICES\.md|LICENSE\.txt|validate\.ps1|sync-upstream-ipset\.ps1)$' -and

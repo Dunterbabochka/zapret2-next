@@ -1,8 +1,9 @@
-# Classic reference: local Windows bundle 1.10.3.
+# Classic reference: local Windows bundle 1.10.4.
 [PRESET_INIT]
 --lua-init=@../lua/zapret-next.lua
+--blob=classic_tls_clienthello_www_sferum_ru:@fake/tls_clienthello_www_sferum_ru.bin
 [TCP_HTTP]
---lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up
+--lua-desync=fake:blob=classic_tls_clienthello_www_sferum_ru:repeats=8:tcp_ts=-600000:tcp_ts_up
 --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up
 [TCP_TLS]
 --lua-desync=fake:blob=fake_default_tls:repeats=8:tcp_ts=-600000:tcp_ts_up:tls_mod=rnd,dupsid,sni=www.google.com
@@ -15,7 +16,7 @@
 --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:ip_id=zero:tcp_ts_up
 [TCP_GENERIC]
 --payload=http_req
---lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up
+--lua-desync=fake:blob=classic_tls_clienthello_www_sferum_ru:repeats=8:tcp_ts=-600000:tcp_ts_up
 --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up
 --payload=tls_client_hello
 --lua-desync=fake:blob=fake_default_tls:repeats=8:tcp_ts=-600000:tcp_ts_up:tls_mod=rnd,dupsid,sni=www.google.com
@@ -35,13 +36,13 @@
 <n4
 [GAME_TCP_ACTIONS]
 --payload=http_req
---lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up
+--lua-desync=fake:blob=classic_tls_clienthello_www_sferum_ru:repeats=8:tcp_ts=-600000:tcp_ts_up
 --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up
 --payload=tls_client_hello
 --lua-desync=fake:blob=fake_default_tls:repeats=8:tcp_ts=-600000:tcp_ts_up:tls_mod=rnd,dupsid,sni=www.google.com
 --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up
 --payload=unknown
---lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up:payload=unknown
+--lua-desync=fake:blob=classic_tls_clienthello_www_sferum_ru:repeats=8:tcp_ts=-600000:tcp_ts_up:payload=unknown
 --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google:tcp_ts_up
 [GAME_UDP_RANGE]
 <n3

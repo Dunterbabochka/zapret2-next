@@ -1,9 +1,10 @@
-# Classic reference: local Windows bundle 1.10.3.
+# Classic reference: local Windows bundle 1.10.4.
 [PRESET_INIT]
 --lua-init=@../lua/zapret-next.lua
 --blob=classic_tls_clienthello_4pda_to:@fake/tls_clienthello_4pda_to.bin
+--blob=classic_tls_clienthello_www_sferum_ru:@fake/tls_clienthello_www_sferum_ru.bin
 [TCP_HTTP]
---lua-desync=fake:blob=tls_max:repeats=6:tcp_ts=-600000:tcp_ts_up
+--lua-desync=fake:blob=classic_tls_clienthello_www_sferum_ru:repeats=6:tcp_ts=-600000:tcp_ts_up
 [TCP_TLS]
 --lua-desync=fake:blob=stun:repeats=6:tcp_ts=-600000:tcp_ts_up
 --lua-desync=fake:blob=classic_tls_clienthello_4pda_to:repeats=6:tcp_ts=-600000:tcp_ts_up
@@ -13,7 +14,7 @@
 --lua-desync=fake:blob=tls_google:repeats=6:tcp_ts=-600000:ip_id=zero:tcp_ts_up
 [TCP_GENERIC]
 --payload=http_req
---lua-desync=fake:blob=tls_max:repeats=6:tcp_ts=-600000:tcp_ts_up
+--lua-desync=fake:blob=classic_tls_clienthello_www_sferum_ru:repeats=6:tcp_ts=-600000:tcp_ts_up
 --payload=tls_client_hello
 --lua-desync=fake:blob=stun:repeats=6:tcp_ts=-600000:tcp_ts_up
 --lua-desync=fake:blob=classic_tls_clienthello_4pda_to:repeats=6:tcp_ts=-600000:tcp_ts_up
@@ -32,7 +33,7 @@
 <n3
 [GAME_TCP_ACTIONS]
 --payload=http_req
---lua-desync=fake:blob=tls_max:repeats=6:tcp_ts=-600000:tcp_ts_up
+--lua-desync=fake:blob=classic_tls_clienthello_www_sferum_ru:repeats=6:tcp_ts=-600000:tcp_ts_up
 --payload=tls_client_hello
 --lua-desync=fake:blob=stun:repeats=6:tcp_ts=-600000:tcp_ts_up
 --lua-desync=fake:blob=classic_tls_clienthello_4pda_to:repeats=6:tcp_ts=-600000:tcp_ts_up

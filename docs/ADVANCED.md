@@ -369,10 +369,10 @@ runtime\test-results
 ### Воспроизводимый импорт Classic
 
 Для сопровождающих: из корня репозитория выполните команду с путём к локальной
-исходной сборке 1.10.3:
+исходной сборке 1.10.4:
 
 ```powershell
-python packaging/import-flowseal.py --source 'D:\path\to\reference'
+python packaging/import-flowseal.py --source 'D:\path\to\reference' --source-version 1.10.4
 ```
 
 Импорт обновляет шаблоны Classic, лаунчеры и `packaging/classic-reference.json`

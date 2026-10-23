@@ -13,6 +13,7 @@ function Get-ZapretEnvironmentDiagnostics([string]$Root, $Snapshot=$null) {
         $Snapshot=@{Services=$services;Processes=$processes;Hosts=$hosts;DoH=$doh;OneDrive=@($env:OneDrive,$env:OneDriveConsumer,$env:OneDriveCommercial)}
     }
     $checks=@(
+        @{Code='Happ';Pattern='(?i)\bHappService\b|\bhapp\.exe\b';Message='Happ network service or process is present.'},
         @{Code='AdGuard';Pattern='(?i)adguard';Message='AdGuard network filtering is present.'},
         @{Code='Killer';Pattern='(?i)killer';Message='Killer network services are present.'},
         @{Code='IntelConnectivity';Pattern='(?i)Intel.*Connectivity.*Network|IntelConnectivityNetworkService';Message='Intel Connectivity Network Service is present.'},

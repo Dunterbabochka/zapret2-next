@@ -1,4 +1,4 @@
-# Classic reference: local Windows bundle 1.10.3.
+# Classic reference: local Windows bundle 1.10.4.
 [PRESET_INIT]
 --lua-init=@../lua/zapret-next.lua
 --blob=classic_tls_clienthello_4pda_to:@fake/tls_clienthello_4pda_to.bin

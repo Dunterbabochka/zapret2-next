@@ -1,6 +1,6 @@
 """Import a local Flowseal Windows bundle as explicit Zapret 2 Lua presets.
 
-Usage: python packaging/import-flowseal.py --source PATH
+Usage: python packaging/import-flowseal.py --source PATH --source-version VERSION
 The source is read only. Engine binaries and mutable ACTIVE_* files are not copied.
 """
 import argparse
@@ -145,16 +145,18 @@ def translate(source):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
+    parser.add_argument('--source-version', required=True, help='Version of the verified source bundle')
     args = parser.parse_args()
     provenance = []
     for path in sorted(args.source.glob('general*.bat')):
         name = 'general' if path.stem == 'general' else path.stem[9:-1]
         source = path.read_text(encoding='utf-8-sig')
-        content = '# Classic reference: local Windows bundle 1.10.3.\n' + translate(source)
+        content = '# Classic reference: local Windows bundle ' + args.source_version + '.\n' + translate(source)
         (ROOT / 'presets' / (name + '.txt.in')).write_text(content, encoding='utf-8')
         launcher = ROOT / 'strategies' / path.name
         launcher.write_bytes(('@echo off\r\ncall "%~dp0..\\utils\\run-preset.bat" "' + name + '"\r\n').encode())
-        provenance.append({'preset': name, 'sourceFile': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+        provenance.append({'preset': name, 'sourceFile': path.name, 'sourceVersion': args.source_version,
+                           'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
     for path in (args.source / 'bin').glob('*.bin'):
         if not path.name.startswith('ACTIVE_'):
             target = ROOT / 'bin' / 'fake' / path.name
