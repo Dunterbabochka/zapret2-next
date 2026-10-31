@@ -25,8 +25,6 @@
 - Исправлена загрузка Telegram helper из скачанного архива: ручная разблокировка DLL больше не требуется.
 - Уточнены границы общего диагностического отчёта: он проверяет веб-доступ, а результат входа в игру указывается отдельно.
 
-Спасибо [@HelloGames-ds](https://github.com/HelloGames-ds) за идею и реализацию автоматического обнаружения пользовательских пресетов в [PR №4](https://github.com/Dunterbabochka/zapret2-next/pull/4)!
-
 **С опубликованной версии 0.4.1 и более ранних нужно один раз обновиться вручную** по [инструкции ниже](#updating). Начиная с 0.4.2 следующие стабильные версии можно устанавливать через `111`.
 
 <a id="quick-start"></a>
@@ -135,3 +133,5 @@ WinDivert — компонент обработки сетевого трафи�
 - [Безопасность](SECURITY.md) · [Сторонние компоненты](THIRD_PARTY_NOTICES.md)
 
 Код сборки распространяется по [MIT](LICENSE.txt). Используются [Zapret 2](https://github.com/bol-van/zapret2), [WinDivert](https://github.com/basil00/WinDivert) и [Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy). Проект предоставляется «как есть».
+
+Спасибо [@HelloGames-ds](https://github.com/HelloGames-ds) за идею и реализацию автоматического обнаружения пользовательских пресетов в [PR №4](https://github.com/Dunterbabochka/zapret2-next/pull/4)!
