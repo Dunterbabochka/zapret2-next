@@ -16,8 +16,16 @@ function Get-ZapretTelegramShellProcessId {
         if ([IO.File]::Exists($native)) {
             $catalog=[IO.File]::ReadAllLines((Join-Path $PSScriptRoot '..\SHA256SUMS.txt'))
             $entry=@($catalog | Where-Object { $_ -match '^[0-9A-Fa-f]{64}\s+\*?bin[/\\]zapret-native\.dll$' })
-            if ($entry.Count -ne 1 -or (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash -ine ($entry[0] -split '\s+')[0]) { throw 'Native shell helper SHA256 mismatch.' }
-            Add-Type -Path $native -ErrorAction Stop
+            $bytes=[IO.File]::ReadAllBytes($native)
+            $sha=[Security.Cryptography.SHA256]::Create()
+            try { $hash=[BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-','') }
+            finally { $sha.Dispose() }
+            if ($entry.Count -ne 1 -or $hash -ine ($entry[0] -split '\s+')[0]) { throw 'Native shell helper SHA256 mismatch.' }
+            # Explorer can preserve Zone.Identifier when extracting a downloaded ZIP.
+            # Load exactly the verified bytes: path-based Add-Type fails with
+            # 0x80131515 in Windows PowerShell 5.1 even for an intact local helper.
+            $assembly=[Reflection.Assembly]::Load($bytes)
+            if (-not $assembly.GetType('ZapretTelegram.NativeShell',$false,$false)) { throw 'Native shell helper type is missing.' }
         } else {
             Add-Type -TypeDefinition @'
 using System;

@@ -296,6 +296,9 @@ function New-SupportPublicDocument {
     } | Select-Object -Unique)
     return [ordered]@{
         schema = 'zapret2-next.support-report'; schemaVersion = 1
+        testScope = 'web-only'
+        webTested = @($rows | Where-Object { $_.curlExitCode -ne -1 }).Count -gt 0
+        probeSettings = [ordered]@{ game='off'; voice='off' }
         status = $script:support.status
         startedAtUtc = $script:support.startedAtUtc; finishedAtUtc = $script:support.finishedAtUtc
         provider = $script:support.provider; regionCity = $script:support.regionCity
@@ -303,6 +306,7 @@ function New-SupportPublicDocument {
         ipsetEntries = [int]$script:support.ipsetEntries; checks = $checks; webResults = $rows; issues = $issues
         statePreserved = [bool]$script:support.statePreserved
         serviceRestored = [bool]$script:support.serviceRestored
+        gamesTested = $false; gameLoginTested = $false
         voiceTested = $false; videoPlaybackTested = $false; screenShareTested = $false
     }
 }
@@ -317,10 +321,13 @@ function Save-SupportArtifacts([string]$RunDirectory) {
     else { Write-Utf8File $csv '"phase","preset","ipset","target","mandatory","reachable","curlExitCode","httpCode","durationMs","errorCode"' }
     $lines = @(
         'Zapret 2 NEXT — отчёт для обращения',
+        'Область проверки: веб-доступность. Игровые соединения и вход в игру не проверяются.',
+        'Настройки веб-проб: Game=off, Voice=off; это не сохранённые настройки пользователя.',
         "Статус: $($document.status)", "Провайдер: $($document.provider)", "Область/город: $($document.regionCity)",
         "Сборка: $($document.versions.bundle); движок: $($document.versions.engine); Windows: $($document.versions.windows)",
         "Начало UTC: $($document.startedAtUtc); окончание UTC: $($document.finishedAtUtc)",
         "Записей IPSet: $($document.ipsetEntries)",
+        "Сохранённые настройки: Game=$($document.settings.game), IPSet=$($document.settings.ipset), Voice=$($document.settings.voice)",
         "Настройки сохранены: $($document.statePreserved); состояние службы восстановлено: $($document.serviceRestored)",
         '', 'Проверки окружения (подробности — в results.json):'
     )
@@ -338,11 +345,11 @@ function Save-SupportArtifacts([string]$RunDirectory) {
             }
         }
     }
-    $networkSummary = if ($document.webResults.Count) {
+    $networkSummary = if ($document.webTested) {
         'Проверена DNS/TLS/HTTP-доступность указанных адресов. Ответ HTTP сам по себе не подтверждает обход блокировки.'
     } else { 'Сетевые проверки не выполнялись; доступность адресов и работа стратегий не проверены.' }
     $lines += @('', "Коды проблем: $($document.issues -join ', ')", $networkSummary,
-        'Звонки, демонстрация экрана и воспроизведение видео автоматически не проверялись.',
+        'Вход в игры, звонки, демонстрация экрана и воспроизведение видео автоматически не проверялись.',
         'IPSet=any используется только для диагностики; настройки не применяются.',
         'Приложите этот ZIP к обращению на GitHub. Отправка выполняется вручную.')
     if ($document.issues -contains 'DNSResolutionFailed') {

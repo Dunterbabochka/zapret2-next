@@ -19,6 +19,7 @@ $checks = 0
 $canaries = @('198.51.100.77','2001:db8::cafe','AA:BB:CC:DD:EE:FF','991234','PRIVATE_TOKEN_123','C:\Users\private-user\private-path','--secret=private-cookie')
 $canary = $canaries -join ' '
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+[IO.Directory]::CreateDirectory((Join-Path $fixture 'utils')) | Out-Null
 
 function Assert-Support([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
@@ -109,6 +110,8 @@ function Read-TestZip([string]$Path) {
 }
 
 foreach ($scenarioName in @('success','full-fail','timeout','mixed','warnings','foreign','proxy','stale-service','cancel','scan-cancel','preflight-error','stop-error','scan-error','restore-error','state-change','no-service','stopped-service','busy','export-error','log-export-error')) {
+    $savedGame=if ($scenarioName -eq 'success') { 'all' } else { 'off' }
+    [IO.File]::WriteAllText((Join-Path $fixture 'utils\game_filter.mode'),$savedGame)
     Initialize-ZapretLog -Root $root -Component support -Action Scan
     $script:scenario=$scenarioName; $script:events=[Collections.Generic.List[string]]::new(); $script:stateReads=0
     $busyLock=$null
@@ -126,6 +129,10 @@ foreach ($scenarioName in @('success','full-fail','timeout','mixed','warnings','
         $doc = Read-TestZip $artifact.ZipPath
         Assert-Support ($null -eq $doc.versions.PSObject.Properties['private']) 'Unexpected version metadata exported'
         Assert-Support (-not $doc.voiceTested -and -not $doc.videoPlaybackTested -and -not $doc.screenShareTested) 'Automatic scan claimed manual acceptance'
+        Assert-Support ($doc.testScope -ceq 'web-only' -and -not $doc.gamesTested -and -not $doc.gameLoginTested) 'Web report claimed game coverage'
+        Assert-Support ($doc.probeSettings.game -eq 'off' -and $doc.probeSettings.voice -eq 'off') 'Probe settings confused with saved settings'
+        Assert-Support ($doc.settings.game -eq $savedGame -or ($scenarioName -in @('cancel','busy') -and $doc.settings.game -eq 'unknown')) 'Saved game mode overwritten by web probe settings'
+        Assert-Support ($doc.webTested -eq (@($doc.webResults | Where-Object { $_.curlExitCode -ne -1 }).Count -gt 0)) 'Web coverage flag disagrees with performed probes'
         $scans = @($script:events | Where-Object { $_ -like 'scan:*' })
         if ($scenarioName -in @('success','full-fail','timeout','mixed','warnings','no-service','stopped-service')) {
             Assert-Support ($doc.status -eq 'completed') "$scenarioName did not complete"
@@ -145,6 +152,7 @@ foreach ($scenarioName in @('success','full-fail','timeout','mixed','warnings','
         }
         if ($scenarioName -eq 'state-change') { Assert-Support (-not $doc.statePreserved -and $doc.issues -contains 'StateChanged') 'State change not detected' }
         $reportText = Get-Content -LiteralPath (Join-Path $artifact.Directory 'share\REPORT.txt') -Raw -Encoding UTF8
+        Assert-Support ($reportText.Contains('Игровые соединения и вход в игру не проверяются') -and $reportText.Contains('Настройки веб-проб: Game=off, Voice=off')) 'Report lost its game coverage limitation'
         if ($scenarioName -in @('foreign','proxy','stale-service')) {
             Assert-Support ($doc.status -eq 'blocked' -and $artifact.ExitCode -eq 3 -and $doc.issues -contains 'EnvironmentBlocked') 'Environment blocker not classified'
             Assert-Support ($scans.Count -eq 0 -and $doc.webResults.Count -eq 0) 'Blocked run performed network probes'
@@ -182,6 +190,8 @@ $script:result.webResults=@()
 & $presetImplementation 'general' 'loaded'
 Assert-Support ($script:result.webResults.Count -eq 2 -and $script:result.webResults[0].CurlExitCode -eq -1) 'Broken preset lost result rows'
 Assert-Support ($script:support.issues -contains 'EngineStartFailed') 'Broken preset not classified'
+$failedEngineDocument=New-SupportPublicDocument
+Assert-Support (-not $failedEngineDocument.webTested -and -not $failedEngineDocument.gamesTested) 'Engine start failure claimed a completed web or game probe'
 
 # Exercise real foreign-service and PktMon policy independently of Windows SCM.
 $script:skipVoiceObserved=$false

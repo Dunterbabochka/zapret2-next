@@ -8,6 +8,7 @@ body:
       value: |
         Если ни одна стратегия не подошла, откройте service.bat → 13. Run Diagnostics → 2. Create support report (automatic).
         После проверки приложите готовый ZIP из runtime/support-reports. Подробные локальные логи прикладывать не нужно.
+        Отчёт проверяет веб-адреса; игровые соединения и вход в игру в него не входят. Для игры заполните дополнительные поля ниже.
   - type: input
     id: provider
     attributes:
@@ -28,6 +29,22 @@ body:
       placeholder: Например, YouTube не открывается ни с одной стратегией; Discord работает.
     validations:
       required: true
+  - type: textarea
+    id: game_details
+    attributes:
+      label: Игра и ошибка входа (если применимо)
+      description: Укажите название игры, клиент или магазин (например, ArenaNet или Steam), полный числовой код ошибки и режим Game Filter. Логины и пароли не указывайте.
+      placeholder: "Guild Wars 2, ArenaNet; код 58:11:5:512; Game Filter TCP; IPSet loaded."
+  - type: dropdown
+    id: game_without_zapret
+    attributes:
+      label: Вход в игру без Zapret и VPN
+      description: Если уже сравнивали, укажите результат. Для заполнения формы запускать новую проверку не требуется.
+      options:
+        - Не проверял(а)
+        - Работает без Zapret и VPN
+        - Не работает без Zapret и VPN
+        - Не относится к игре
   - type: textarea
     id: diagnostics
     attributes:

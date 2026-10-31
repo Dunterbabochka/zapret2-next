@@ -19,6 +19,8 @@ try {
 $bundleGate = $null
 try {
     Write-Host 'Automatic support report / Автоматический отчёт' -ForegroundColor Cyan
+    Write-Host 'Проверяются веб-адреса. Игровые соединения и вход в игру не проверяются.' -ForegroundColor Yellow
+    Write-Host 'Веб-пробы используют Game=off, Voice=off независимо от сохранённых настроек.'
     if ([string]::IsNullOrWhiteSpace($Provider)) {
         $Provider = Read-RequiredValue 'Провайдер / Internet provider'
         $RegionCity = (Read-Host 'Область или город (желательно; Enter = пропустить, q = отмена)').Trim()

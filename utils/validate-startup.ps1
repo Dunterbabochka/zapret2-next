@@ -211,14 +211,48 @@ $native=Join-Path $fixture 'bin\zapret-native.dll'
 Assert-Startup ($LASTEXITCODE -eq 0) 'Precompiled native helper build failed'
 [IO.File]::WriteAllText((Join-Path $fixture 'SHA256SUMS.txt'),((Get-FileHash $native -Algorithm SHA256).Hash+'  bin/zapret-native.dll'))
 $probe=Join-Path $fixture 'probe.ps1'
-[IO.File]::WriteAllText($probe,('param($Root); $ErrorActionPreference="Stop"; . (Join-Path $Root "utils\telegram-control.ps1"); $null=Get-ZapretTelegramShellProcessId'))
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Root $fixture
-Assert-Startup ($LASTEXITCODE -eq 0) 'Precompiled native helper load failed'
-[IO.File]::AppendAllText($native,'corrupt')
-$ErrorActionPreference='Continue'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Root $fixture 2>$null
+[IO.File]::WriteAllText($probe,@'
+param($Root, [switch]$BytesOnly)
 $ErrorActionPreference='Stop'
-Assert-Startup ($LASTEXITCODE -ne 0) 'Corrupt native helper was loaded'
+. (Join-Path $Root 'utils\telegram-control.ps1')
+$null=Get-ZapretTelegramShellProcessId
+$null=Get-ZapretTelegramShellProcessId
+if ($BytesOnly -and ('ZapretTelegram.NativeShell' -as [type]).Assembly.Location) { throw 'Helper loaded from a path rather than verified bytes.' }
+$identity=Get-ZapretTelegramNativeIdentity $PID
+if ($identity.SID -ne (Get-ZapretTelegramCurrentIdentity) -or $identity.SessionId -ne (Get-ZapretTelegramSessionId)) { throw 'Native identity changed after loading the helper.' }
+'@)
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Root $fixture -BytesOnly
+Assert-Startup ($LASTEXITCODE -eq 0) 'Precompiled native helper load failed'
+$nativeBytes=[IO.File]::ReadAllBytes($native)
+$nativeCatalog=[IO.File]::ReadAllText((Join-Path $fixture 'SHA256SUMS.txt'))
+Set-Content -LiteralPath $native -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Root $fixture -BytesOnly
+Assert-Startup ($LASTEXITCODE -eq 0) 'Downloaded helper failed with Zone.Identifier'
+Assert-Startup ((Get-Content -LiteralPath $native -Stream Zone.Identifier -Raw).Contains('ZoneId=3')) 'Helper loading changed the download zone metadata'
+function Assert-NativeHelperRejected([string]$Message) {
+    $previousPreference=$ErrorActionPreference
+    $ErrorActionPreference='Continue'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Root $fixture 2>$null
+    $probeExit=$LASTEXITCODE
+    $ErrorActionPreference=$previousPreference
+    Assert-Startup ($probeExit -ne 0) $Message
+}
+[IO.File]::AppendAllText($native,'corrupt')
+Assert-NativeHelperRejected 'Corrupt downloaded native helper was loaded'
+[IO.File]::WriteAllBytes($native,$nativeBytes)
+[IO.File]::WriteAllText((Join-Path $fixture 'SHA256SUMS.txt'),($nativeCatalog+"`r`n"+$nativeCatalog))
+Assert-NativeHelperRejected 'Duplicate helper catalog entries were accepted'
+[IO.File]::WriteAllText($native,'not a managed assembly')
+[IO.File]::WriteAllText((Join-Path $fixture 'SHA256SUMS.txt'),((Get-FileHash $native -Algorithm SHA256).Hash+'  bin/zapret-native.dll'))
+Assert-NativeHelperRejected 'Invalid assembly silently fell back to compilation'
+$wrongAssembly=Join-Path $fixture 'wrong-helper.dll'
+Add-Type -TypeDefinition 'public static class WrongNativeHelper {}' -OutputAssembly $wrongAssembly
+[IO.File]::WriteAllBytes($native,[IO.File]::ReadAllBytes($wrongAssembly))
+[IO.File]::WriteAllText((Join-Path $fixture 'SHA256SUMS.txt'),((Get-FileHash $native -Algorithm SHA256).Hash+'  bin/zapret-native.dll'))
+Assert-NativeHelperRejected 'Assembly without NativeShell type was accepted'
+[IO.File]::Delete($native)
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe -Root $fixture
+Assert-Startup ($LASTEXITCODE -eq 0) 'Source-checkout helper compilation fallback failed'
 
 Close-ZapretLogMenu -OwnerProcessId $PID
 Complete-ZapretLogOperation

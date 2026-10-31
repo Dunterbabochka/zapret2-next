@@ -110,6 +110,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\utils\validate-support.ps1
 
 `packaging/benchmark-startup.py` измеряет реальный ввод и возвраты через скрытую консоль; `packaging/benchmark-telegram-layout.py` сравнивает экспериментальные сборки без изменения поставляемого runtime. Методику и границы проверки см. в [PERFORMANCE.md](PERFORMANCE.md). Сравнения скорости выполнять последовательно, отдельно от сборки и тяжёлых validation-наборов.
 
+В `validate-startup.ps1` helper проверяется также в отдельных процессах Windows
+PowerShell 5.1 с `Zone.Identifier` (`ZoneId=3`): проверенные байты DLL должны загружаться
+без изменения метки. Повреждённый файл, дубли SHA256, неверная DLL и отсутствие
+типа `NativeShell` должны отклоняться; отсутствие DLL в исходной копии сохраняет
+компиляцию встроенного C#-кода. Проверки не создают задачи и не запускают Telegram.
+
+`validate-support.ps1` проверяет границы веб-отчёта (`gamesTested=false`,
+`gameLoginTested=false`) и отделение `probeSettings` от сохранённых `settings`,
+включая прерванные и заблокированные проверки без сетевых результатов.
+
 ## Проверки Classic и новых настроек
 
 Все 22 Classic синхронизированы с локальной исходной сборкой 1.10.4. Хеши исходных
