@@ -114,7 +114,7 @@ try {
     if ($Action -in @('Prepare','Apply','Recover')) {
         $recoveryState = try { (Read-ReleaseTransaction $Root).Status } catch { 'unavailable' }
         Write-Host ('Code: UpdateFailed; recovery: ' + $recoveryState) -ForegroundColor Yellow
-        Write-Host '13. Run Diagnostics -> 5. Create logs archive' -ForegroundColor Yellow
+        Write-Host '14. Run Diagnostics -> 5. Create logs archive' -ForegroundColor Yellow
         Write-Host 'If the menu cannot open, run from this folder: powershell -NoProfile -ExecutionPolicy Bypass -File runtime\release-update\recovery\manage-logs.ps1 -Action Export -Root .' -ForegroundColor Yellow
     }
 } finally {

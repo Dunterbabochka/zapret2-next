@@ -119,6 +119,7 @@ foreach ($sourceOnlyPath in @(
     'utils\validate-release-update.ps1',
     'utils\validate-session-log.ps1',
     'utils\validate-startup.ps1',
+    'utils\validate-dns.ps1',
     'utils\validate-enhancements.ps1',
     'lists\ipset-all.txt.backup'
 )) {

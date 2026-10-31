@@ -23,7 +23,7 @@ function Get-ReleaseMenuBanner([string]$Root, [hashtable]$State=$null) {
     return ''
 }
 function Read-ReleaseMenuChoice([string]$Root, [scriptblock]$OnReady=$null) {
-    $prompt = '   Select option (0-15): '
+    $prompt = '   Select option (0-16): '
     # PowerShell 5.1 otherwise encodes Console.Write text in the OEM code page;
     # English Windows replaces the Cyrillic update notification with '?'.
     if (-not [Console]::IsOutputRedirected) { [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false) }
@@ -34,7 +34,7 @@ function Read-ReleaseMenuChoice([string]$Root, [scriptblock]$OnReady=$null) {
         if ($OnReady) { & $OnReady }
         $answer = [Console]::ReadLine()
         if ($null -eq $answer) { return 0 }
-        if ($answer -match '^(?:[0-9]|1[0-5]|111)$') { return [int]$answer }
+        if ($answer -match '^(?:[0-9]|1[0-6]|111)$') { return [int]$answer }
         return 255
     }
     # Use a small local polling loop, not another process/network request for
@@ -61,7 +61,7 @@ function Read-ReleaseMenuChoice([string]$Root, [scriptblock]$OnReady=$null) {
             $key = [Console]::ReadKey($true)
             if ($key.Key -eq [ConsoleKey]::Enter) {
                 [Console]::WriteLine('')
-                if ($answer -match '^(?:[0-9]|1[0-5]|111)$') { return [int]$answer }
+                if ($answer -match '^(?:[0-9]|1[0-6]|111)$') { return [int]$answer }
                 return 255
             }
             if ($key.Key -eq [ConsoleKey]::Backspace) {

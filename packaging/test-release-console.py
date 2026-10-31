@@ -162,8 +162,8 @@ def main():
                      ":read_status\nset \"CURRENT_PRESET=general\"\nset \"SERVICE_STATUS=Stopped\"\nset \"TELEGRAM_STATUS=DISABLED\"\ncall :read_settings\nexit /b\n\n", service)
     labels = {"install_service": 1, "remove_service": 2, "show_status": 3, "game_filter": 4,
               "ipset_filter": 5, "update_toggle": 6, "voice_filter": 7, "fake_profiles": 8,
-              "telegram": 9, "update_ipset": 10, "update_hosts": 11, "manual_update_check": 12,
-              "tests": 14, "clear_discord_cache": 15, "update_release": 111}
+              "telegram": 9, "dns_settings": 10, "update_ipset": 11, "update_hosts": 12, "manual_update_check": 13,
+              "tests": 15, "clear_discord_cache": 16, "update_release": 111}
     for label, result in labels.items():
         service = re.sub(r"(?ms)^:" + label + r"\n.*?(?=^:[a-z_]+\n|\Z)",
                          f":{label}\necho TEST-ACTION-{result}\nexit /b {result}\n\n", service)
@@ -176,7 +176,7 @@ function Test-ZapretMenuAdministrator { return $true }
 function Get-ZapretMenuService { [pscustomobject]@{State='Stopped';Preset='general'} }
 function Get-ZapretMenuTelegram { return 'DISABLED' }
 function Invoke-ZapretMenuAction([int]$Selection) {
-    if ($Selection -eq 13) { Show-ZapretDiagnosticsMenu; return }
+    if ($Selection -eq 14) { Show-ZapretDiagnosticsMenu; return }
     Write-Host ('TEST-ACTION-'+$Selection)
     $script:testResult=$Selection
     $script:menuExit=$true
@@ -212,7 +212,7 @@ function Get-ReleaseHttpTarget([string]$Url) {
     try:
         started = time.monotonic()
         console.wait_text(("Starting Zapret 2 NEXT...", "ZAPRET 2 NEXT SERVICE MANAGER"), timeout=2)
-        console.wait_text("Select option (0-15):", timeout=8)
+        console.wait_text("Select option (0-16):", timeout=8)
         assert time.monotonic() - started < 8, "Menu waited for the 10-second API response"
         console.type("0\r")
         assert console.process.wait(timeout=5) == 0
@@ -234,7 +234,7 @@ function Get-ReleaseHttpTarget([string]$Url) {
     scenario.write_text(json.dumps({"mode": "ok", "delay": 2}), encoding="utf-8")
     console = Console(command)
     try:
-        console.wait_text("Select option (0-15):", timeout=8)
+        console.wait_text("Select option (0-16):", timeout=8)
         console.type("1")
         console.wait_text("Доступна новая версия 9.9.1", timeout=10)
         console.type("11\r")
@@ -252,10 +252,10 @@ function Get-ReleaseHttpTarget([string]$Url) {
     if check.exists():
         check.unlink()
     requests = (args.root / "requests.txt").read_text(encoding="utf-8")
-    for choice in (0, 1, 10, 15):
+    for choice in (0, 1, 10, 11, 12, 13, 15, 16):
         console = Console(command)
         try:
-            console.wait_text("Select option (0-15):")
+            console.wait_text("Select option (0-16):")
             console.type(f"{choice}\r")
             assert console.process.wait(timeout=5) == choice
         finally:
@@ -263,8 +263,8 @@ function Get-ReleaseHttpTarget([string]$Url) {
     assert (args.root / "requests.txt").read_text(encoding="utf-8") == requests, "Disabled auto-check made requests"
     console = Console(command)
     try:
-        console.wait_text("Select option (0-15):")
-        console.type("13\r")
+        console.wait_text("Select option (0-16):")
+        console.type("14\r")
         console.wait_text("Select option (0-5):")
         console.type("5\r")
         console.wait_text("Logs archive /", timeout=15)
@@ -276,7 +276,7 @@ function Get-ReleaseHttpTarget([string]$Url) {
             time.sleep(0.02)
         console.wait_text("Select option (0-5):")
         console.type("0\r")
-        console.wait_text("Select option (0-15):")
+        console.wait_text("Select option (0-16):")
         console.type("0\r")
         assert console.process.wait(timeout=5) == 0
     finally:
@@ -299,12 +299,12 @@ function Get-ReleaseHttpTarget([string]$Url) {
         console = Console(command)
         try:
             if recovery_exit == 0:
-                console.wait_text("Select option (0-15):")
+                console.wait_text("Select option (0-16):")
                 console.type("0\r")
             assert console.process.wait(timeout=10) == recovery_exit
             assert ran.exists(), "Menu skipped required recovery"
             if recovery_exit:
-                assert "Select option (0-15):" not in console.text(), "Menu opened after failed recovery"
+                assert "Select option (0-16):" not in console.text(), "Menu opened after failed recovery"
         finally:
             console.close()
             marker.unlink(missing_ok=True)

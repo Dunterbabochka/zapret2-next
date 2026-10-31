@@ -56,6 +56,9 @@ jobs:
       - name: Validate persistent menu and paired rendering
         shell: powershell
         run: ./utils/validate-startup.ps1
+      - name: Validate DNS settings and rollback without changing system DNS
+        shell: powershell
+        run: ./utils/validate-dns.ps1
       - name: Detect release channel
         id: release_meta
         shell: pwsh

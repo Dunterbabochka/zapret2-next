@@ -92,11 +92,12 @@ if ($releaseBuilderAvailable -and ($buildReleaseContent -notmatch 'Join-Path \$s
     $buildReleaseContent -notmatch 'Stable release version')) {
     Add-ValidationError 'build-release.ps1 must stamp the requested version and reject mismatched stable releases.'
 }
-if ($menuContent -notmatch '13\. Run Diagnostics' -or
-    $menuContent -notmatch '14\. Run Tests' -or
+if ($menuContent -notmatch '14\. Run Diagnostics' -or
+    $menuContent -notmatch '15\. Run Tests' -or
     $menuContent -notmatch '7\. Discord Voice' -or
     $menuContent -notmatch '8\. UDP Fake Profiles' -or
-    $menuContent -notmatch '15\. Clear Discord Cache') {
+    $menuContent -notmatch '16\. Clear Discord Cache' -or
+    $menuContent -notmatch '10\. DNS Settings') {
     Add-ValidationError 'The service menu items are not aligned or a required settings/tool item is missing.'
 }
 if ($serviceContent -notmatch 'menu\.ps1' -or

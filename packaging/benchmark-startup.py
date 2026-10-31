@@ -91,18 +91,18 @@ def measure(fixture: Path, runs: int, idle_seconds: float, navigation_rounds: in
         started = time.perf_counter()
         console = Console(["cmd.exe", "/d", "/c", str(fixture / "service.bat")])
         try:
-            console.wait_text("Select option (0-15):", timeout=15)
+            console.wait_text("Select option (0-16):", timeout=15)
             ready = time.perf_counter()
             start_resources = resources()
             back_samples = []
             rss_samples = []
             for _round in range(navigation_rounds):
                 # Diagnostics -> Back is a reversible real navigation path.
-                console.type("13\r")
+                console.type("14\r")
                 console.wait_text("Select option (0-5):", timeout=5)
                 before_back = time.perf_counter()
                 console.type("0\r")
-                console.wait_text("Select option (0-15):", timeout=5)
+                console.wait_text("Select option (0-16):", timeout=5)
                 back_samples.append((time.perf_counter()-before_back)*1000)
                 if _round % 25 == 24 or _round == navigation_rounds-1:
                     rss_samples.append({'round': _round+1, 'rss_mib': sum(value['rss_mib'] for value in resources().values())})

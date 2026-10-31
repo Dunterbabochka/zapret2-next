@@ -9,6 +9,7 @@ $startupTimer=[Diagnostics.Stopwatch]::StartNew()
 . (Join-Path $PSScriptRoot 'menu-settings.ps1')
 . (Join-Path $PSScriptRoot 'service-control.ps1')
 . (Join-Path $PSScriptRoot 'telegram-control.ps1')
+. (Join-Path $PSScriptRoot 'dns-settings.ps1')
 
 function Test-ZapretMenuAdministrator {
     $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
@@ -72,6 +73,15 @@ function Get-ZapretMenuModes {
     $defaults.Update=if ([IO.File]::Exists((Join-Path $root 'utils\check_updates.enabled'))) {'enabled'} else {'disabled'}
     $defaults
 }
+function Get-ZapretMenuDnsStatus {
+    # Reuse the local observation for rapid navigation; never persist a guess.
+    if ($script:dnsMenuStatusCache -and $script:dnsMenuStatusCache.Timer.ElapsedMilliseconds -lt 2000) {
+        return $script:dnsMenuStatusCache.Value
+    }
+    $value=try { Get-ZapretDnsMenuStatus } catch { 'UNKNOWN' }
+    $script:dnsMenuStatusCache=@{Value=$value;Timer=[Diagnostics.Stopwatch]::StartNew()}
+    return $value
+}
 function Invoke-ZapretMenuOperation([string]$Component,[string]$Action,[scriptblock]$Body) {
     Invoke-ZapretLoggedOperation -Root $root -Component $Component -Action $Action -Body $Body
 }
@@ -90,7 +100,7 @@ function Start-ZapretMenuCheck {
     }
     catch { Write-ZapretLogException $_ -Warning }
 }
-function Show-ZapretMenu([object]$Service,[hashtable]$Modes,[string]$Telegram) {
+function Show-ZapretMenu([object]$Service,[hashtable]$Modes,[string]$Telegram,[string]$Dns='UNKNOWN') {
     Clear-ZapretMenu
     $version=try { Get-ReleaseVersion $root } catch {'unknown'}
     Write-Host "`n  ZAPRET 2 NEXT SERVICE MANAGER v$version"
@@ -107,8 +117,9 @@ function Show-ZapretMenu([object]$Service,[hashtable]$Modes,[string]$Telegram) {
     Write-Host "      7. Discord Voice       [$($Modes.Voice)]"
     Write-Host "      8. UDP Fake Profiles   [D:$($Modes.DiscordFakeLabel) / G:$($Modes.GameFakeLabel)]"
     Write-Host "      9. Telegram            [$Telegram]"
-    Write-Host "`n  :: UPDATES`n     10. Update IPSet List`n     11. Update Hosts File`n     12. Check for Updates"
-    Write-Host "`n  :: TOOLS`n     13. Run Diagnostics`n     14. Run Tests`n     15. Clear Discord Cache"
+    Write-Host "     10. DNS Settings        [$Dns]"
+    Write-Host "`n  :: UPDATES`n     11. Update IPSet List`n     12. Update Hosts File`n     13. Check for Updates"
+    Write-Host "`n  :: TOOLS`n     14. Run Diagnostics`n     15. Run Tests`n     16. Clear Discord Cache"
     Write-Host "`n  -----------------------------------------------`n      0. Exit`n"
 }
 function Update-ZapretMenuService {
@@ -330,6 +341,10 @@ function Show-ZapretDiagnosticsMenu {
         } catch { Write-ZapretLogException $_ -Warning; Write-Host ('[ERROR] '+$_.Exception.Message) -ForegroundColor Red; Wait-ZapretMenu }
     } while ($true)
 }
+function Show-ZapretMenuDnsSettings {
+    try { Show-ZapretDnsMenu }
+    finally { $script:dnsMenuStatusCache=$null }
+}
 function Invoke-ZapretMenuAction([int]$Selection) {
     switch ($Selection) {
         1 { Install-ZapretMenuService }
@@ -342,12 +357,13 @@ function Invoke-ZapretMenuAction([int]$Selection) {
             Wait-ZapretMenu
         }
         9 { Show-ZapretTelegramMenu }
-        10 {
+        10 { Show-ZapretMenuDnsSettings }
+        11 {
             Clear-ZapretMenu
             Invoke-ZapretMenuChild update-ipset.ps1 @('-Destination',(Join-Path $root 'lists\ipset-all.txt'))
             Update-ZapretMenuService; Wait-ZapretMenu
         }
-        11 {
+        12 {
             Clear-ZapretMenu
             $output=Join-Path $env:TEMP 'zapret2-next-hosts.txt'
             $url=try { 'https://raw.githubusercontent.com/'+(Get-ReleaseRepository $root)+'/main/.service/hosts' } catch {''}
@@ -357,10 +373,10 @@ function Invoke-ZapretMenuAction([int]$Selection) {
             Start-Process explorer.exe -ArgumentList ('/select,"'+$env:SystemRoot+'\System32\drivers\etc\hosts"') | Out-Null
             Wait-ZapretMenu
         }
-        12 { Clear-ZapretMenu; Invoke-ZapretMenuChild update-release.ps1 @('-Action','Check','-Force'); Wait-ZapretMenu }
-        13 { Show-ZapretDiagnosticsMenu }
-        14 { Start-Process powershell.exe -ArgumentList ('-NoExit -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $PSScriptRoot 'test-presets.ps1')+'"') -WindowStyle Normal | Out-Null }
-        15 { Clear-ZapretMenu; Invoke-ZapretMenuChild clear-discord-cache.ps1; Wait-ZapretMenu }
+        13 { Clear-ZapretMenu; Invoke-ZapretMenuChild update-release.ps1 @('-Action','Check','-Force'); Wait-ZapretMenu }
+        14 { Show-ZapretDiagnosticsMenu }
+        15 { Start-Process powershell.exe -ArgumentList ('-NoExit -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $PSScriptRoot 'test-presets.ps1')+'"') -WindowStyle Normal | Out-Null }
+        16 { Clear-ZapretMenu; Invoke-ZapretMenuChild clear-discord-cache.ps1; Wait-ZapretMenu }
         111 {
             Clear-ZapretMenu
             Invoke-ZapretMenuChild update-release.ps1 @('-Action','Prepare','-Launch')
@@ -404,7 +420,7 @@ try {
         $script:telegramStatus=Get-ZapretMenuTelegram
         while (-not $script:menuExit) {
             $service=Get-ZapretMenuService; $modes=Get-ZapretMenuModes
-            Show-ZapretMenu $service $modes $script:telegramStatus
+            Show-ZapretMenu $service $modes $script:telegramStatus (Get-ZapretMenuDnsStatus)
             try { $selection=Read-ReleaseMenuChoice $root -OnReady {
                 if (-not $script:readyRecorded) {
                     Write-ZapretLogEvent -Stage ready -Details @{durationMs=[long]$startupTimer.ElapsedMilliseconds}

@@ -49,6 +49,9 @@ jobs:
       - name: Validate persistent menu and paired rendering
         shell: powershell
         run: ./utils/validate-startup.ps1
+      - name: Validate DNS settings and rollback without changing system DNS
+        shell: powershell
+        run: ./utils/validate-dns.ps1
       - name: Validate compatibility wizard and failure simulations
         shell: powershell
         run: |
