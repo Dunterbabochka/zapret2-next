@@ -15,8 +15,17 @@ function Assert-DnsRejected([scriptblock]$Body,[string]$Message) {
 }
 
 # Compile on Windows PowerShell 5.1 and exercise the real read/free ABI.
-$liveCount=0
+$liveCount=0;$skippedLiveCount=0
 foreach ($adapter in @(Get-ZapretDnsAdapters | Where-Object Status -eq Up)) {
+    try {
+        $bindings=@(Get-NetAdapterBinding -Name ([WildcardPattern]::Escape($adapter.Name)) -ComponentID ms_tcpip,ms_tcpip6 -ErrorAction Stop | Where-Object Enabled)
+    } catch {
+        # Hosted Windows runners expose service NICs with no IP bindings.
+        # Only this expected absence is skipped; native/read failures still fail.
+        if ($_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound,*') { $skippedLiveCount++; continue }
+        throw
+    }
+    if (-not $bindings.Count) { $skippedLiveCount++; continue }
     $snapshot=Get-ZapretDnsSnapshot $adapter
     Assert-ZapretDnsSnapshot $snapshot ([guid]$adapter.InterfaceGuid)
     Assert-Dns (@($snapshot.Families).Count -gt 0) 'Live adapter DNS read failed'
@@ -433,4 +442,4 @@ foreach ($case in @(@{Input='10';Expected=10},@{Input='16';Expected=16},@{Input=
     # Use the production input function, with no update cache in the test root.
     Assert-Dns ($LASTEXITCODE -eq 0 -and [bool]($output -match ('CHOICE:'+$case.Expected+'$'))) 'Main menu input rejected DNS or accepted an invalid option'
 }
-Write-Host "[OK] DNS settings: $checks checks; $liveCount live adapters read only. System DNS was not changed."
+Write-Host "[OK] DNS settings: $checks checks; $liveCount live adapters read only; $skippedLiveCount service/non-IP adapters skipped. System DNS was not changed."
