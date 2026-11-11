@@ -1,3 +1,25 @@
+# Ping is useful context, but cannot demonstrate HTTP/TLS access or win a preset scan.
+function Get-ZapretTestSummary([object[]]$Rows) {
+    $web=@($Rows | Where-Object { $_.Test -ne 'PING' })
+    $ping=@($Rows | Where-Object { $_.Test -eq 'PING' })
+    [pscustomobject]@{
+        Passed=@($web | Where-Object { $_.Success -eq $true }).Count
+        Failed=@($web | Where-Object { $_.Success -eq $false }).Count
+        Unsupported=@($web | Where-Object { $_.Status -eq 'UNSUPPORTED' }).Count
+        Total=$web.Count
+        PingPassed=@($ping | Where-Object { $_.Success -eq $true }).Count
+        PingTotal=$ping.Count
+    }
+}
+function Get-ZapretTestSummaryColor($Summary) {
+    if ($Summary.Failed -gt 0) {
+        if ($Summary.Passed -gt 0) { return 'Yellow' }
+        return 'Red'
+    }
+    if ($Summary.Passed -gt 0) { return 'Green' }
+    return 'DarkGray'
+}
+
 # A transfer result is separate from protocol support and DNS/certificate failures.
 function Get-ZapretTransferStatus([int]$ExitCode, [string]$ErrorText, [long]$Uploaded, [long]$Downloaded, [bool]$Dpi) {
     if ($ExitCode -eq 0) { return 'OK' }

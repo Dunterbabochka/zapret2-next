@@ -135,8 +135,11 @@ foreach ($helper in @('ipset-utils.ps1', 'service-control.ps1', 'manage-service.
         Add-ValidationError "Missing stability helper: $helper"
     }
 }
-if ($menuContent -notmatch 'Start-Process powershell.exe -ArgumentList \(''-NoExit ') {
-    Add-ValidationError 'The test console must stay open so failures remain visible.'
+$testPresetsContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'test-presets.ps1') -Raw
+if ($menuContent -match '(?i)-NoExit' -or
+    $menuContent -notmatch 'Start-Process powershell.exe -ArgumentList \(''-NoProfile ' -or
+    $testPresetsContent -notmatch '(?s)finally\s*\{\s*Complete-ZapretLogOperation.*Press any key to close') {
+    Add-ValidationError 'The test console must pause after success/errors and exit after a key, without -NoExit.'
 }
 $cacheCleanupPath = Join-Path $PSScriptRoot 'clear-discord-cache.ps1'
 $cacheCleanupContent = if (Test-Path -LiteralPath $cacheCleanupPath -PathType Leaf) {

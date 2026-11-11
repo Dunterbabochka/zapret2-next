@@ -104,7 +104,7 @@ function Show-ZapretMenu([object]$Service,[hashtable]$Modes,[string]$Telegram,[s
     Clear-ZapretMenu
     $version=try { Get-ReleaseVersion $root } catch {'unknown'}
     Write-Host "`n  ZAPRET 2 NEXT SERVICE MANAGER v$version"
-    Write-Host "  Strategy: $($Service.Preset)   Game: $($Modes.Game)   IPSet: $($Modes.IPSet)   Voice: $($Modes.Voice)"
+    Write-Host "  Strategy: $(Get-ZapretPresetDisplayName $Service.Preset)   Game: $($Modes.Game)   IPSet: $($Modes.IPSet)   Voice: $($Modes.Voice)"
     Write-Host "  UDP fakes: Discord=$($Modes.DiscordFakeLabel)   Game=$($Modes.GameFakeLabel)"
     Write-Host "  Service: $($Service.State)"
     Write-Host "  Telegram: $Telegram"
@@ -147,7 +147,7 @@ function Install-ZapretMenuService {
     Write-Host ('{0,-46}{1,-30}{2}' -f '  ----------------------------------------','----------------------------','----------------------')
     $rows=[Math]::Max([Math]::Max($classic.Count,$next.Count),$custom.Count)
     for ($i=0;$i -lt $rows;$i++) {
-        $left=if ($i -lt $classic.Count) { "{0}. {1}" -f ($i+1),$classic[$i] } else {''}
+        $left=if ($i -lt $classic.Count) { "{0}. {1}" -f ($i+1),(Get-ZapretPresetDisplayName $classic[$i]) } else {''}
         $middle=if ($i -lt $next.Count) { "{0}. {1}" -f ($classic.Count+$i+1),$next[$i] } else {''}
         $customLine=if ($i -lt $custom.Count) { "{0}. {1}" -f ($classic.Count+$next.Count+$i+1),$custom[$i] } else {''}
         Write-Host ('{0,-46}{1,-30}{2}' -f ('  '+$left),$middle,$customLine)
@@ -157,9 +157,8 @@ function Install-ZapretMenuService {
     $selection=0
     if ($pick -notmatch '^\d+$' -or -not [int]::TryParse($pick,[ref]$selection) -or $selection -lt 1 -or $selection -gt $presets.Count) { throw 'Invalid preset selection.' }
     $selected=$presets[$selection-1]
-    Write-Host "`nSelected configuration:`n  Strategy: $selected   Game: $($modes.Game)   IPSet: $($modes.IPSet)   Voice: $($modes.Voice)"
+    Write-Host "`nInstalling service...`n  Strategy: $(Get-ZapretPresetDisplayName $selected)   Game: $($modes.Game)   IPSet: $($modes.IPSet)   Voice: $($modes.Voice)"
     Write-Host "  UDP fakes: Discord=$($modes.DiscordFakeLabel)   Game=$($modes.GameFakeLabel)"
-    if ((Read-ZapretMenuLine 'Install this service configuration? [Y/n]: ') -ieq 'N') { return }
     $ipset=if ($modes.IPSet -eq 'any') {'loaded'} else {$modes.IPSet}
     if ($modes.IPSet -eq 'any') { Write-Host 'IPSet any is diagnostic-only; service installation will use loaded.' -ForegroundColor Yellow }
     Invoke-ZapretMenuOperation service Install { Set-ZapretServiceConfiguration -Root $root -Preset $selected -IPSetMode $ipset -Install }
@@ -169,7 +168,7 @@ function Show-ZapretMenuStatus {
     Clear-ZapretMenu
     $service=Get-ZapretMenuService; $modes=Get-ZapretMenuModes
     $script:telegramStatus=Get-ZapretMenuTelegram
-    Write-Host "Service name:       winws2`nService state:      $($service.State)`nSelected strategy:  $($service.Preset)"
+    Write-Host "Service name:       winws2`nService state:      $($service.State)`nSelected strategy:  $(Get-ZapretPresetDisplayName $service.Preset)"
     Write-Host "Game filter:        $($modes.Game)`nIPSet filter:       $($modes.IPSet)`nDiscord Voice:      $($modes.Voice)"
     Write-Host "Game TCP ports:     $($modes.GameTcpPorts)`nGame UDP ports:     $($modes.GameUdpPorts)"
     Write-Host "Discord UDP fake:   $($modes.DiscordFakeLabel)`nGame UDP fake:      $($modes.GameFakeLabel)"
@@ -375,7 +374,7 @@ function Invoke-ZapretMenuAction([int]$Selection) {
         }
         13 { Clear-ZapretMenu; Invoke-ZapretMenuChild update-release.ps1 @('-Action','Check','-Force'); Wait-ZapretMenu }
         14 { Show-ZapretDiagnosticsMenu }
-        15 { Start-Process powershell.exe -ArgumentList ('-NoExit -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $PSScriptRoot 'test-presets.ps1')+'"') -WindowStyle Normal | Out-Null }
+        15 { Start-Process powershell.exe -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $PSScriptRoot 'test-presets.ps1')+'"') -WindowStyle Normal | Out-Null }
         16 { Clear-ZapretMenu; Invoke-ZapretMenuChild clear-discord-cache.ps1; Wait-ZapretMenu }
         111 {
             Clear-ZapretMenu

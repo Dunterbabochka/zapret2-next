@@ -31,6 +31,46 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class NetworkChecksTests(unittest.TestCase):
+    def test_summary_excludes_ping_and_marks_partial_failures(self):
+        script = r'''
+$ErrorActionPreference='Stop'
+. './utils/network-checks.ps1'
+$cases=@{
+    pingOnly=@([pscustomobject]@{Test='PING';Success=$true;Status='OK'})
+    webFailPingOk=@([pscustomobject]@{Test='HTTP1.1';Success=$false;Status='TIMEOUT'},[pscustomobject]@{Test='PING';Success=$true;Status='OK'})
+    partial=@([pscustomobject]@{Test='HTTP1.1';Success=$true;Status='OK'},[pscustomobject]@{Test='TLS1.3';Success=$false;Status='TLS_ERROR'})
+    unsupported=@([pscustomobject]@{Test='TLS1.3';Success=$null;Status='UNSUPPORTED'})
+    webOkPingFail=@([pscustomobject]@{Test='HTTP1.1';Success=$true;Status='OK'},[pscustomobject]@{Test='PING';Success=$false;Status='FAIL'})
+    startupFailure=@([pscustomobject]@{Test='START';Success=$false;Status='FAIL'})
+}
+$result=@{}
+foreach ($name in $cases.Keys) {
+    $summary=Get-ZapretTestSummary $cases[$name]
+    $result[$name]=@{Summary=$summary;Color=Get-ZapretTestSummaryColor $summary}
+}
+$result | ConvertTo-Json -Depth 5 -Compress
+'''
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+                                cwd=ROOT, capture_output=True, text=True, timeout=15,
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        cases = json.loads(result.stdout)
+        for name, passed, failed, total, color in (
+            ('pingOnly', 0, 0, 0, 'DarkGray'),
+            ('webFailPingOk', 0, 1, 1, 'Red'),
+            ('partial', 1, 1, 2, 'Yellow'),
+            ('unsupported', 0, 0, 1, 'DarkGray'),
+            ('webOkPingFail', 1, 0, 1, 'Green'),
+            ('startupFailure', 0, 1, 1, 'Red'),
+        ):
+            with self.subTest(name=name):
+                summary = cases[name]['Summary']
+                self.assertEqual((summary['Passed'], summary['Failed'], summary['Total']),
+                                 (passed, failed, total))
+                self.assertEqual(cases[name]['Color'], color)
+        self.assertEqual(cases['unsupported']['Summary']['Unsupported'], 1)
+        self.assertEqual(cases['webFailPingOk']['Summary']['PingPassed'], 1)
+
     def test_head_success_does_not_hide_post_freeze(self):
         server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         server.daemon_threads = True

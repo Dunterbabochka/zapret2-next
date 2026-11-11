@@ -78,7 +78,7 @@ foreach ($case in @(@{Text='';Loaded=$false},@{Text="# comments`r`n `r`n";Loaded
 $script:answers=[Collections.Generic.Queue[string]]::new()
 $script:refreshes=[Collections.Generic.List[object]]::new()
 function Read-ZapretMenuLine { param($Prompt); if (-not $script:answers.Count) { throw 'Unexpected input request' }; $script:answers.Dequeue() }
-function Wait-ZapretMenu {}
+function Wait-ZapretMenu { $script:pauses++ }
 function Clear-ZapretMenu {}
 function Get-ZapretMenuService { [pscustomobject]@{State='Running';Preset='general'} }
 function Set-ZapretServiceConfiguration { param($Root,$Preset,$IPSetMode,[switch]$Restart,[switch]$Install); $script:refreshes.Add(@{Restart=[bool]$Restart;Install=[bool]$Install;IPSet=$IPSetMode;Preset=$Preset}) }
@@ -104,8 +104,27 @@ Assert-Startup ((Get-ZapretMenuModes).DiscordFake -eq 'current' -and (Get-Zapret
 $count=$script:refreshes.Count
 $script:answers.Enqueue('0');Set-ZapretMenuMode 8
 Assert-Startup ($script:refreshes.Count -eq $count) 'Cancel applied a setting'
-$script:answers.Enqueue([string]($classicPresets.Count+2));$script:answers.Enqueue('Y');Install-ZapretMenuService
-Assert-Startup ($script:refreshes[$script:refreshes.Count-1].Preset -eq 'NEXT BALANCED' -and $script:refreshes[$script:refreshes.Count-1].Install) 'Preset mapping or install confirmation changed'
+# One numeric choice installs immediately; only the post-install pause remains.
+$script:pauses=0
+$expectedPresets=@('ALT','ALT2','ALT3','ALT4','ALT5','ALT6','ALT7','ALT8','ALT9','ALT10','ALT11','ALT12','ALT13','EXP','general','FAKE TLS AUTO','FAKE TLS AUTO ALT','FAKE TLS AUTO ALT2','FAKE TLS AUTO ALT3','SIMPLE FAKE','SIMPLE FAKE ALT','SIMPLE FAKE ALT2','NEXT SAFE','NEXT BALANCED')
+Assert-Startup ((@(Get-ZapretMenuPresets) -join ',') -ceq ($expectedPresets -join ',')) 'Menu order must follow ALT numbers, EXP, general, FAKE TLS, SIMPLE FAKE and NEXT'
+for ($i=0;$i -lt $expectedPresets.Count;$i++) {
+    $script:answers.Enqueue([string]($i+1))
+    $lines=@(Install-ZapretMenuService 6>&1 | ForEach-Object { [string]$_ })
+    $displayName=Get-ZapretPresetDisplayName $expectedPresets[$i]
+    Assert-Startup ([bool]($lines -match ([regex]::Escape(($i+1).ToString()+'. '+$displayName)+'(?:\s|$)'))) 'Displayed preset number is incorrect'
+    Assert-Startup ($script:refreshes[$script:refreshes.Count-1].Preset -ceq $expectedPresets[$i] -and $script:refreshes[$script:refreshes.Count-1].Install) 'One numeric choice installed a different preset or required confirmation'
+    Assert-Startup ($script:answers.Count -eq 0 -and $script:pauses -eq ($i+1)) 'Install did not finish with exactly one pause'
+}
+Assert-Startup ((Get-ZapretPresetDisplayName 'ALT') -ceq 'ALT1 (ALT)') 'ALT1 display alias lost the original template identity'
+$count=$script:refreshes.Count;$pauses=$script:pauses
+$script:answers.Enqueue('0');Install-ZapretMenuService 6>&1 | Out-Null
+Assert-Startup ($script:refreshes.Count -eq $count -and $script:pauses -eq $pauses) 'Cancel installed a service or required a pause'
+& {
+    function Start-Process { param($FilePath,$ArgumentList,$WindowStyle); $script:testLaunch=@{File=$FilePath;Arguments=$ArgumentList;WindowStyle=$WindowStyle} }
+    Invoke-ZapretMenuAction 15
+    Assert-Startup ($script:testLaunch.File -eq 'powershell.exe' -and $script:testLaunch.Arguments -notmatch '(?i)-NoExit' -and $script:testLaunch.Arguments.Contains('test-presets.ps1')) 'Run Tests must launch a console that exits after its own pause'
+}
 
 # Discover local templates without changing the shipped contract or selecting
 # a different strategy when a shipped template is missing.
@@ -122,7 +141,7 @@ try {
     $menuLines=@(Install-ZapretMenuService 6>&1 | ForEach-Object { [string]$_ })
     Assert-Startup ([bool]($menuLines -match '36\. LOCAL 012') -and [bool]($menuLines -match '114\. LOCAL 090')) 'Long custom column was truncated or misnumbered'
     foreach ($case in @(@{Pick='25';Name='LOCAL 001'},@{Pick='36';Name='LOCAL 012'},@{Pick='114';Name='LOCAL 090'})) {
-        $script:answers.Enqueue($case.Pick);$script:answers.Enqueue('Y')
+        $script:answers.Enqueue($case.Pick)
         Install-ZapretMenuService 6>&1 | Out-Null
         Assert-Startup ($script:refreshes[$script:refreshes.Count-1].Preset -ceq $case.Name) 'Displayed custom number selected a different preset'
     }
@@ -137,7 +156,7 @@ try {
     $backup=$missing+'.missing-test'
     Move-Item -LiteralPath $missing -Destination $backup
     try {
-        Assert-Startup (@(Get-ZapretMenuPresets)[3] -ceq 'ALT3') 'Missing shipped file shifted the menu catalogue'
+        Assert-Startup (@(Get-ZapretMenuPresets)[2] -ceq 'ALT3') 'Missing shipped file shifted the menu catalogue'
         $rejected=$false
         try { Install-ZapretMenuService 6>&1 | Out-Null } catch { $rejected=$_.Exception.Message -eq 'Missing preset: ALT3' }
         Assert-Startup ($rejected -and $script:refreshes.Count -eq $count) 'Missing shipped template allowed an incorrect selection'

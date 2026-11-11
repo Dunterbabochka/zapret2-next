@@ -59,6 +59,7 @@ if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
 Write-Host '[OK] curl.exe' -ForegroundColor Green
 
 . (Join-Path $PSScriptRoot 'preset-catalog.ps1')
+. (Join-Path $PSScriptRoot 'network-checks.ps1')
 $presetFiles = @(Get-ZapretMenuPresets | ForEach-Object { Get-Item -LiteralPath (Join-Path $root ('presets\'+$_+'.txt.in')) })
 if ($Preset) {
     $wanted = @($Preset | ForEach-Object { $_.ToLowerInvariant() })
@@ -231,7 +232,7 @@ function Select-PresetFiles([array]$Files) {
 
     Write-Host ''
     for ($i = 0; $i -lt $Files.Count; $i++) {
-        Write-Host ("  [{0}] {1}" -f ($i + 1), ($Files[$i].BaseName -replace '\.txt$', '')) -ForegroundColor Gray
+        Write-Host ("  [{0}] {1}" -f ($i + 1), (Get-ZapretPresetDisplayName ($Files[$i].BaseName -replace '\.txt$', ''))) -ForegroundColor Gray
     }
     while ($true) {
         $inputValue = (Read-Host 'Numbers/ranges (example: 1,3,5-7; 0 = all)').Trim()
@@ -275,6 +276,14 @@ Write-Host ("              Presets: {0} | Targets: {1}" -f $presetFiles.Count, $
 Write-Host ("              Parallel workers: {0}" -f $MaxParallel) -ForegroundColor Cyan
 Write-Host '============================================================' -ForegroundColor Cyan
 
+if ($Suite -in @('standard','both')) {
+    Write-Host 'Standard: HTTP HEAD reachability only; video playback and calls are not tested.' -ForegroundColor Yellow
+}
+if ($Suite -in @('dpi','both')) {
+    Write-Host 'DPI: short synthetic transfers; sustained video playback and calls are not tested.' -ForegroundColor Yellow
+}
+Write-Host 'Ping is shown separately and does not affect the HTTP/TLS ranking.' -ForegroundColor DarkGray
+
 $serviceWasRunning = (Get-Service winws2 -ErrorAction SilentlyContinue).Status -eq 'Running'
 $savedProcesses = @()
 try {
@@ -298,7 +307,7 @@ try {
 
         Write-Host ''
         Write-Host '------------------------------------------------------------' -ForegroundColor DarkCyan
-        Write-Host ("  [{0}/{1}] {2}" -f $presetNumber, $presetFiles.Count, $name) -ForegroundColor Yellow
+        Write-Host ("  [{0}/{1}] {2}" -f $presetNumber, $presetFiles.Count, (Get-ZapretPresetDisplayName $name)) -ForegroundColor Yellow
         Write-Host '------------------------------------------------------------' -ForegroundColor DarkCyan
         Stop-Winws2
 
@@ -324,9 +333,9 @@ try {
         foreach ($row in $rows) {
             $all += [pscustomobject]@{ Preset=$name; Target=$row.Target; Test=$row.Test; Status=$row.Status; Success=$row.Success; Detail=$row.Detail; UploadedBytes=$row.UploadedBytes; DownloadedBytes=$row.DownloadedBytes; DurationMs=$row.DurationMs }
         }
-        $passed = @($rows | Where-Object Success).Count
+        $counts = Get-ZapretTestSummary $rows
         $timer.Stop()
-        Write-Host ("  > Completed in {0:N1}s: {1}/{2} checks passed." -f $timer.Elapsed.TotalSeconds, $passed, $rows.Count) -ForegroundColor $(if($passed){'Green'}else{'Red'})
+        Write-Host ("  > Completed in {0:N1}s: HTTP/TLS OK={1} FAIL={2} UNSUP={3}; PING OK={4}/{5}." -f $timer.Elapsed.TotalSeconds, $counts.Passed, $counts.Failed, $counts.Unsupported, $counts.PingPassed, $counts.PingTotal) -ForegroundColor (Get-ZapretTestSummaryColor $counts)
         Stop-Winws2
     }
 } finally {
@@ -348,8 +357,7 @@ $csv = Join-Path $resultsDir "results-$stamp.csv"
 $all | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $csv
 
 $summary = $all | Group-Object Preset | ForEach-Object {
-    $passed = @($_.Group | Where-Object Success).Count
-    [pscustomobject]@{ Preset=$_.Name; Passed=$passed; Failed=@($_.Group | Where-Object { $_.Success -eq $false }).Count; Unsupported=@($_.Group | Where-Object { $_.Status -eq 'UNSUPPORTED' }).Count; Total=$_.Count }
+    Get-ZapretTestSummary $_.Group | Add-Member -NotePropertyName Preset -NotePropertyValue $_.Name -PassThru
 }
 
 Write-Host ''
@@ -357,8 +365,8 @@ Write-Host '============================================================' -Foreg
 Write-Host '                         RESULTS' -ForegroundColor Cyan
 Write-Host '============================================================' -ForegroundColor Cyan
 foreach ($item in $summary) {
-    Write-Host ("  {0} : " -f $item.Preset) -NoNewline
-    Write-Host ("OK={0} FAIL={1} TOTAL={2} UNSUP={3}" -f $item.Passed, $item.Failed, $item.Total, $item.Unsupported) -ForegroundColor $(if($item.Failed){'Yellow'}else{'Green'})
+    Write-Host ("  {0} : " -f (Get-ZapretPresetDisplayName $item.Preset)) -NoNewline
+    Write-Host ("HTTP/TLS OK={0} FAIL={1} TOTAL={2} UNSUP={3}; PING OK={4}/{5}" -f $item.Passed, $item.Failed, $item.Total, $item.Unsupported, $item.PingPassed, $item.PingTotal) -ForegroundColor (Get-ZapretTestSummaryColor $item)
 }
 
 $best = $summary | Where-Object { $_.Passed -gt 0 } |
@@ -366,18 +374,29 @@ $best = $summary | Where-Object { $_.Passed -gt 0 } |
     Select-Object -First 1
 if ($best) {
     Write-Host ''
-    Write-Host ("  Best preset: {0} ({1}/{2})" -f $best.Preset, $best.Passed, $best.Total) -ForegroundColor Green
+    Write-Host ("  Top preset by HTTP/TLS checks: {0} ({1}/{2}); verify video/calls manually." -f (Get-ZapretPresetDisplayName $best.Preset), $best.Passed, $best.Total) -ForegroundColor Yellow
+} else {
+    Write-Host '  No preset passed HTTP/TLS checks; ping alone is not a successful result.' -ForegroundColor Yellow
 }
+Write-Host '  These results describe this short scan, not sustained video playback or calls.' -ForegroundColor Yellow
 Write-Host ("  Results saved: {0}" -f $csv) -ForegroundColor Green
 
 $exitCode = if (@($all | Where-Object { $_.Success -eq $false }).Count) { 2 } else { 0 }
-if (-not $NonInteractive) {
-    Write-Host ''
-    Write-Host 'Press any key to close...' -ForegroundColor Yellow
-    [void][Console]::ReadKey($true)
-}
 Complete-ZapretLogOperation -ExitCode $exitCode
 exit $exitCode
 
-} catch { Write-ZapretLogException $_; throw }
-finally { Complete-ZapretLogOperation }
+} catch {
+    Write-ZapretLogException $_
+    Write-Host ('[ERROR] '+$_.Exception.Message) -ForegroundColor Red
+    Complete-ZapretLogOperation -ExitCode 1
+    exit 1
+} finally {
+    Complete-ZapretLogOperation
+    # Own the pause here so early failures remain readable without -NoExit.
+    if (-not $NonInteractive) {
+        Write-Host ''
+        Write-Host 'Press any key to close...' -ForegroundColor Yellow
+        if ([Console]::IsInputRedirected) { $null=[Console]::ReadLine() }
+        else { $null=[Console]::ReadKey($true) }
+    }
+}

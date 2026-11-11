@@ -9,8 +9,8 @@
 # ones. To add a strategy, drop presets\<NAME>.txt.in into the bundle and,
 # optionally, strategies\general (<NAME>).bat. Nothing else has to be edited.
 
-$classicPresets = @('general', 'ALT', 'ALT2', 'ALT3', 'ALT4', 'ALT5', 'ALT6', 'ALT7', 'ALT8', 'ALT9',
-    'ALT10', 'ALT11', 'ALT12', 'ALT13', 'EXP', 'FAKE TLS AUTO', 'FAKE TLS AUTO ALT',
+$classicPresets = @('ALT', 'ALT2', 'ALT3', 'ALT4', 'ALT5', 'ALT6', 'ALT7', 'ALT8', 'ALT9',
+    'ALT10', 'ALT11', 'ALT12', 'ALT13', 'EXP', 'general', 'FAKE TLS AUTO', 'FAKE TLS AUTO ALT',
     'FAKE TLS AUTO ALT2', 'FAKE TLS AUTO ALT3', 'SIMPLE FAKE', 'SIMPLE FAKE ALT', 'SIMPLE FAKE ALT2')
 $nextPresets = @('NEXT SAFE', 'NEXT BALANCED')
 $publicPresets = @($classicPresets + $nextPresets)
@@ -20,6 +20,12 @@ $hiddenPresets = @('NEXT AGGRESSIVE', 'VOICE')
 
 # Files in presets\ that are templates rather than strategies.
 $presetTemplateNames = @('_base', '_profiles')
+
+function Get-ZapretPresetDisplayName([string]$Preset) {
+    # Keep the upstream template/launcher and saved service metadata compatible.
+    if ($Preset -eq 'ALT') { return 'ALT1 (ALT)' }
+    return $Preset
+}
 
 function Get-ZapretPresetPath([string]$preset) {
     Join-Path (Split-Path -Parent $PSScriptRoot) ('presets\' + $preset + '.txt.in')
